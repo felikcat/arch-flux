@@ -19,7 +19,7 @@ void select_partitions(void)
 	}
 
 	if (system("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS")) {
-		printf("Failed to retrieve disk information.");
+		perror("Failed to retrieve disk information");
 		exit(1);
 	}
 
@@ -27,14 +27,22 @@ void select_partitions(void)
 
 	char disk_name[INT8_MAX];
 	char prompt[8];
+	const char *invalid = "!@#$%^&*()_+=-\\[].;'";
 
-	if (fgets(disk_name, INT8_MAX, stdin)) {
-		disk_name[strcspn(disk_name, (" "))] = 0;
+	if (fgets(disk_name, sizeof(disk_name), stdin)) {
+		size_t length = strcspn(disk_name, invalid);
+
+		if (length != strlen(disk_name)) {
+			puts("\nDisk has been entered incorrectly, try again.\n");
+			// There's an issue where prior incorrect disks show up in the selected disk dialog.
+			// TODO: fix this later to be able to loop back to the select_partitions() function.
+			exit(1);
+		}
+
 		printf("\nSelected disk: %s\nPress y then ENTER to confirm, n to deny.\n",
 		       disk_name);
-		i32 length = sizeof(prompt);
 
-		if (fgets(prompt, length, stdin) == NULL) {
+		if (fgets(prompt, sizeof(prompt), stdin) == NULL) {
 			perror("Failed to read stream");
 			exit(1);
 		}
