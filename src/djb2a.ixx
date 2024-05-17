@@ -1,13 +1,14 @@
 module;
+#include "typedefs.hh"
 #include <string>
 #include <string_view>
 export module djb2a;
 
 export
 {
-	inline constexpr auto hash_djb2a(const std::string_view sv)
+	inline constexpr u32 hash_djb2a(const std::string_view sv)
 	{
-		unsigned long hash{ 5381 };
+		u32 hash{ 5381 };
 		for (unsigned char c : sv) {
 			hash = ((hash << 5) + hash) ^ c;
 		}

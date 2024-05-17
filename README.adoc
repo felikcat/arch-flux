@@ -4,4 +4,20 @@ This project is entirely work in progress at the moment.
 == Compiling
 * Arch Linux (also supports WSL2):
 . `sudo pacman -Syu`
-. `sudo pacman -S base-devel boost cmake ninja mold`
+. `sudo pacman -S base-devel boost cmake ninja mold icu`
+. For a faster compilation: +
+```
+sudo sed -i -e "-e 's/.RUSTFLAGS.*/RUSTFLAGS="-C opt-level=2 -C target-cpu=native"/' \
+	-e "s/.MAKEFLAGS.*/MAKEFLAGS=\"-j$(nproc) -l$(nproc)\"/" \
+	-e "s/xz -c -z -/xz -c -z -T $(nproc) -/" \
+	-e "s/bzip2 -c -f/pbzip2 -c -f/" \
+	-e "s/gzip -c -f -n/pigz -c -f -n/" \
+	-e "s/zstd -c -z -q -/zstd -c -z -q -T$(nproc) -/" \
+	-e "s/lrzip -q/lrzip -q -p $(nproc)/" /etc/makepkg.conf
+```
+. Install an AUR helper (if you haven't already).
+- `git clone https://aur.archlinux.org/paru-bin.git ${HOME}/paru-bin`
+- `cd ${HOME}/paru-bin`
+- `makepkg -si --noconfirm`
+
+. `paru -S scnlib-git`

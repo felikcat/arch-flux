@@ -1,11 +1,10 @@
 #include "typedefs.hh"
 #include <boost/regex.hpp>
 #include <iostream>
-#include <string_view>
 #include <string>
+#include <scn/scan.h>
+#include <print>
 import djb2a;
-
-bool di_continue;
 
 void remove_partitions()
 {
@@ -23,41 +22,40 @@ void select_partitions()
 		exit(1);
 	}
 
-	puts("\nDisk examples: /dev/sda or /dev/nvme0n1. Don\'t use partition numbers like: /dev/sda1 or /dev/nvme0n1p1.\nInput your desired disk, then press ENTER: ");
-
-	std::string disk_input;
-	std::cin >> disk_input;
+	const auto disk_input = scn::prompt<std::string>(
+		"\nExample disks: /dev/sda, /dev/nvme0n1.\nInput your desired disk, then press ENTER: ",
+		"{}");
+	auto [di_output] = disk_input->values();
 
 	boost::regex ssd("/dev/sd[a-z]");
 	boost::regex nvme("/dev/(nvme|mmc)([0-9])n1");
-	boost::smatch match;
-	if (boost::regex_search(disk_input, match, ssd)) {
-		printf("Disk selected: %s\nAre you sure: ", disk_input.c_str());
-	} else if (boost::regex_search(disk_input, match, nvme)) {
-		printf("Disk selected: %s\nAre you sure: ", disk_input.c_str());
-	}
 
-	std::string prompt;
-	std::getline(std::cin.ignore(), prompt);
+	if (boost::regex_match(di_output, ssd) ||
+	    boost::regex_match(di_output, nvme)) {
+		std::println("Disk selected -> {}", di_output);
 
-	switch (hash_djb2a(prompt)) {
-	case "y"_sh:
-		di_continue = 1; 
-		break;
-	case "Y"_sh:
-		di_continue = 1;
-		break;
-	default:
-		select_partitions();
-		break;
-	}
+		const auto prompt =
+			scn::prompt<std::string>("Are you sure: ", "{}");
+		const auto &[prompt_output] = prompt->values();
+
+		switch (hash_djb2a(prompt_output)) {
+			// clang-format off
+				case "y"_sh:
+					break;
+				// clang-format off
+				case "Y"_sh:
+					break;
+				default:
+					select_partitions();
+				}
+		} else {
+			select_partitions();
+		}
 }
 
 int main()
 {
-	select_partitions();
-	if (di_continue) {
-		printf("Continue!\n");
-	}
+	select_partitions();	
+	std::println("Continue!\n");
 	return 0;
 }

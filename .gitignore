@@ -1,6 +1,8 @@
 # Directories
 build/
 .vscode/
+.cache/
+.vs/
 
 # Prerequisites
 *.d
