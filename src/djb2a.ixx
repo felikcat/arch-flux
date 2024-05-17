@@ -9,7 +9,7 @@ export
 	inline constexpr u32 hash_djb2a(const std::string_view sv)
 	{
 		u32 hash{ 5381 };
-		for (unsigned char c : sv) {
+		for (const char c : sv) {
 			hash = ((hash << 5) + hash) ^ c;
 		}
 		return hash;
