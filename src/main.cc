@@ -1,4 +1,4 @@
-#include "typedefs.h"
+#include "typedefs.hh"
 
 int main(void)
 {
