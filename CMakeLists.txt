@@ -3,6 +3,7 @@ project(arch-flux
     LANGUAGES CXX)
 
 set(Boost_USE_STATIC_LIBS ON)
+set(CMAKE_MAKE_PROGRAM ninja)
 set(CMAKE_LINKER_TYPE MOLD)
 find_package(Boost REQUIRED regex)
 
@@ -10,7 +11,8 @@ add_executable(main-installer
     src/main.cc)
 add_executable(format-disk
     src/format_disk.cc)
-
+target_sources(format-disk PUBLIC FILE_SET CXX_MODULES FILES
+    src/djb2a.ixx)
 target_link_libraries(format-disk PRIVATE Boost::headers Boost::regex)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra \
@@ -19,7 +21,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra \
     -fstrict-flex-arrays=3 \
     -fstack-clash-protection -fstack-protector-strong")
 
-set_target_properties(main-installer format-disk PROPERTIES C_STANDARD 23
+set_target_properties(main-installer format-disk PROPERTIES
+    CXX_STANDARD 23
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
     LINK_FLAGS "-Wl,-z,nodlopen -Wl,-z,noexecstack \

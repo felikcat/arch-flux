@@ -1,0 +1,7 @@
+== About
+This project is entirely work in progress at the moment.
+
+== Compiling
+* Arch Linux (also supports WSL2):
+. `sudo pacman -Syu`
+. `sudo pacman -S base-devel boost cmake ninja mold`
