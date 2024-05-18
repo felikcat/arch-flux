@@ -14,7 +14,11 @@ add_executable(format-disk
     src/format_disk.cc)
 target_sources(format-disk PUBLIC FILE_SET CXX_MODULES FILES
     src/djb2a.ixx)
-target_link_libraries(format-disk PRIVATE Boost::headers Boost::regex scn::scn)
+
+find_library(LIBPARTED parted)
+message("${LIBPARTED}")
+
+target_link_libraries(format-disk PRIVATE Boost::headers Boost::regex scn::scn ${LIBPARTED_LIBRARIES})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra \
     -Wformat -Wformat=2 -Wconversion -Wimplicit-fallthrough \
@@ -28,7 +32,7 @@ set_target_properties(main-installer format-disk PROPERTIES
     CXX_EXTENSIONS OFF
     LINK_FLAGS "-Wl,-z,nodlopen -Wl,-z,noexecstack \
         -Wl,-z,relro -Wl,-z,now \
-        -static-libgcc -static-libstdc++"
+        -static-libgcc -static-libstdc++ -lparted"
     LINK_FLAGS_RELEASE "-Wl,--strip-all"
     LINK_FLAGS_MINSIZEREL "-Wl,--strip-all")
 

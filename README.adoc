@@ -4,7 +4,7 @@ This project is entirely work in progress at the moment.
 == Compiling
 * Arch Linux (also supports WSL2):
 . `sudo pacman -Syu`
-. `sudo pacman -S base-devel boost cmake ninja mold icu`
+. `sudo pacman -S base-devel gdb boost cmake ninja mold icu util-linux-libs parted`
 . For a faster compilation: +
 ```
 sudo sed -i -e "-e 's/.RUSTFLAGS.*/RUSTFLAGS="-C opt-level=2 -C target-cpu=native"/' \
