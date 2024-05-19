@@ -4,7 +4,7 @@ build/
 .cache/
 .vs/
 .idea/
-cmake-build-debug/
+target/
 
 # Prerequisites
 *.d
