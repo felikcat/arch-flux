@@ -46,8 +46,13 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool) {
         }
     }
 
-    if ssd.is_some() || nvme.is_some() {
+    if ssd.is_some() {
         if let Some(match_str) = ssd {
+            let regex_match = RegexMatch(match_str.as_str());
+            println!("\nSelected disk: {}\n", regex_match);
+        }
+    } else if nvme.is_some() {
+        if let Some(match_str) = nvme {
             let regex_match = RegexMatch(match_str.as_str());
             println!("\nSelected disk: {}\n", regex_match);
         }
