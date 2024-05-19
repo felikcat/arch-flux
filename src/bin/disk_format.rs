@@ -1,6 +1,7 @@
-use std::fs::File;
 use cryptsetup_rs::device::{deactivate, init};
 use regex::Regex;
+use std::fmt::{Display, Formatter, Result};
+use std::fs::File;
 mod funcs;
 
 fn main() {
@@ -37,8 +38,19 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool) {
     let ssd = Regex::new(r"/dev/sd[a-z]").unwrap().find(&input);
     let nvme = Regex::new(r"/dev/(nvme|mmc)([0-9])n1").unwrap().find(&input);
 
+    struct RegexMatch<'a>(&'a str); // Store
+
+    impl<'a> Display for RegexMatch<'a> {
+        fn fmt(&self, format: &mut Formatter) -> Result {
+            write!(format, "{}", self.0)
+        }
+    }
+
     if ssd.is_some() || nvme.is_some() {
-        println!("\n{:?} {:?}\n", ssd, nvme);
+        if let Some(match_str) = ssd {
+            let regex_match = RegexMatch(match_str.as_str());
+            println!("\nSelected disk: {}\n", regex_match);
+        }
     } else {
         *wrong_disk = true;
         return;
@@ -47,7 +59,7 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool) {
     let input = funcs::prompt("Are you sure [y/n]: ");
 
     match input.to_lowercase().as_ref() {
-        "y" if input.len() == 1 => println!("Yes"),
+        "y" if input.len() == 1 => return,
         "n" if input.len() == 1 => disk_selection(wrong_option, wrong_disk),
         _ => {
             *wrong_option = true;
@@ -61,7 +73,7 @@ fn disk_editing() {
     File::create("/dev/mapper/cleanit").unwrap();
     let path = init("/dev/mapper/cleanit").unwrap();
     let _ = deactivate(path, "cleanit");
-    
+
     File::create("/dev/mapper/root").unwrap();
     let path = init("/dev/mapper/root").unwrap();
     let _ = deactivate(path, "root");
