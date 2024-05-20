@@ -98,7 +98,7 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
 
     close(fd).map_err(|_| io::Error::new(io::ErrorKind::Other, "Failed to close disk device"))?;
 
-    println!("Sector size: {}", sector_size);
+    println!("Wiped disk '{}' successfully", device_path);
 
     Ok(())
 }
@@ -113,5 +113,8 @@ fn disk_editing(selected_disk: &str) {
     let path = init("/dev/mapper/root").unwrap();
     let _ = deactivate(path, "root");
 
-    wipe_disk(selected_disk);
+    if let Err(e) = wipe_disk(selected_disk) {
+        eprintln!("Failed to wipe disk '{}': {}", selected_disk, e);
+        return;
+    }
 }
