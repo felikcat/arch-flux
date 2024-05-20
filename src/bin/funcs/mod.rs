@@ -4,12 +4,10 @@ use std::process::Command;
 pub fn prompt(description: &str) -> String {
     print!("{description}");
 
-    let mut s = String::new();
+    io::stdout().flush().expect("Failed to flush stdout");
 
-    let _ = io::stdout().flush();
-    io::stdin()
-        .read_line(&mut s)
-        .expect("Failed to read line");
+    let mut s = String::new();
+    io::stdin().read_line(&mut s).expect("Failed to read line");
 
     s.trim().to_string()
 }
