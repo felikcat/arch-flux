@@ -89,15 +89,14 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
     let mut sector_size = 0;
     let fd: RawFd = device.as_raw_fd();
 
-    // TODO: Add error handling
-    let _ = unsafe { blksszget(fd, &mut sector_size) };
+    unsafe { blksszget(fd, &mut sector_size).map_err(|e| io::Error::new(io::ErrorKind::Other, e))? };
 
     let buffer = vec![0u8; sector_size.try_into().unwrap()];
-    
+
     device.write_all(&buffer)?; // Write zeros to disk.
     device.sync_all()?; // Ensure writes are flushed to disk.
 
-    let _ = close(fd).unwrap();
+    close(fd).map_err(|_| io::Error::new(io::ErrorKind::Other, "Failed to close disk device"))?;
 
     println!("Sector size: {}", sector_size);
 
