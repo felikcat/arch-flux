@@ -8,14 +8,17 @@ use std::ffi::CString;
 use std::fmt::{Display, Formatter, Result};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::ptr::null_mut;
 use std::sync::Mutex;
 
 #[cfg(any(unix, target_os = "wasi"))]
 use std::os::fd::{AsRawFd, RawFd};
 
+use crate::funcs::mib_to_sectors;
+
 mod funcs;
 
-static SECTOR_SIZE: Mutex<i32> = Mutex::new(0);
+static SECTOR_SIZE: Mutex<i64> = Mutex::new(0);
 
 fn main() {
     let mut wrong_option = false;
@@ -100,11 +103,13 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
         blksszget(fd, &mut size).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
     };
 
+    let size_i64 = size as i64;
+
     let mut size_lock = SECTOR_SIZE.lock().unwrap();
-    *size_lock = size;
+    *size_lock = size_i64;
 
     let buffer_size =
-        usize::try_from(size).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid sector size"))?;
+        usize::try_from(size_i64).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid sector size"))?;
     let buffer = vec![0u8; buffer_size];
 
     device.write_all(&buffer)?; // Write zeros to disk.
@@ -118,7 +123,7 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
 }
 
 // https://www.gnu.org/software/parted/api/modules.html
-fn create_partitions(device_path: &str, sector_size: i32) {
+fn create_partitions(device_path: &str, sector_size: i64) {
     let disk_path = CString::new(device_path).expect("CString::new failed");
     unsafe {
         ped_device_probe_all();
@@ -144,7 +149,48 @@ fn create_partitions(device_path: &str, sector_size: i32) {
 
         let start = 2048; // Start sector / alignment
         let end = device_fields.length - 1;
-        println!("sector_size: {}, end: {}", sector_size, end);
+
+        // These need to be separate variables in order to do the math equation.
+        let total_pages: i64 = sysconf(libc::_SC_PHYS_PAGES).try_into().unwrap();
+        let page_size: i64 = sysconf(libc::_SC_PAGE_SIZE).try_into().unwrap();
+        let total_ram: i64 = (total_pages * page_size) / (1024 * 1024);
+
+        println!("sector_size: {}, end: {}, {} total_ram", sector_size, end, total_ram);
+
+        let boot = ped_partition_new(
+            disk,
+            PedPartitionType::PED_PARTITION_NORMAL,
+            null_mut(),
+            start,
+            mib_to_sectors(1024, sector_size),
+        ); // 1024MiB
+        ped_disk_add_partition(disk, boot, ped_constraint_any(device));
+
+        let swap = ped_partition_new(
+            disk,
+            PedPartitionType::PED_PARTITION_NORMAL,
+            null_mut(),
+            mib_to_sectors(1024 + 1, sector_size),
+            mib_to_sectors(total_ram, sector_size) + mib_to_sectors(1024 + 1, sector_size),
+        );
+        ped_disk_add_partition(disk, swap, ped_constraint_any(device));
+
+        let root = ped_partition_new(
+            disk,
+            PedPartitionType::PED_PARTITION_NORMAL,
+            null_mut(),
+            mib_to_sectors(total_ram + 1024 + 2, sector_size).into(),
+            end,
+        );
+        ped_disk_add_partition(disk, root, ped_constraint_any(device));
+
+        if ped_disk_commit_to_dev(disk) == 0 {
+            eprintln!("Failed to write changes to disk");
+        };
+
+        if ped_disk_commit_to_os(disk) == 0 {
+            eprintln!("Failed to commit write changes to disk")
+        };
     }
 }
 
