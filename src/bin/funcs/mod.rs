@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 use std::process::Command;
+use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 
 pub fn prompt(description: &str) -> String {
@@ -38,4 +39,10 @@ pub fn umount(target: &str, flags: libc::c_int) -> Result<(), String> {
 pub fn mib_to_sectors(mib: i64, sector_size: i64) -> i64 {
     let bytes_per_mib: i64 = 1_048_576; // 1024 * 1024
     (mib * bytes_per_mib) / sector_size
+}
+
+pub unsafe fn parted_cleanup(disk: *mut _PedDisk, device: *mut _PedDevice) {
+    ped_disk_destroy(disk);
+    ped_device_destroy(device);
+    panic!("{:?}", println!("parted_cleanup was called, panicking..."))
 }

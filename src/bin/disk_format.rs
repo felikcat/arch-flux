@@ -14,7 +14,7 @@ use std::sync::Mutex;
 #[cfg(any(unix, target_os = "wasi"))]
 use std::os::fd::{AsRawFd, RawFd};
 
-use crate::funcs::mib_to_sectors;
+use crate::funcs::{mib_to_sectors, parted_cleanup};
 
 mod funcs;
 
@@ -155,7 +155,7 @@ fn create_partitions(device_path: &str, sector_size: i64) {
         let page_size: i64 = sysconf(libc::_SC_PAGE_SIZE).try_into().unwrap();
         let total_ram: i64 = (total_pages * page_size) / (1024 * 1024);
 
-        println!("sector_size: {}, end: {}, {} total_ram", sector_size, end, total_ram);
+        println!("sector_size: {}, end: {}, total_ram: {}", sector_size, end, total_ram);
 
         let boot = ped_partition_new(
             disk,
@@ -164,7 +164,14 @@ fn create_partitions(device_path: &str, sector_size: i64) {
             start,
             mib_to_sectors(1024, sector_size),
         ); // 1024MiB
-        ped_disk_add_partition(disk, boot, ped_constraint_any(device));
+        if boot.is_null() {
+            eprintln!("Failed to add the boot partition to disk");
+            parted_cleanup(disk, device);
+        }
+        if ped_disk_add_partition(disk, boot, ped_constraint_any(device)) == 0 {
+            eprintln!("Failed to write the boot partition to disk");
+            parted_cleanup(disk, device);
+        };
 
         let swap = ped_partition_new(
             disk,
@@ -173,7 +180,14 @@ fn create_partitions(device_path: &str, sector_size: i64) {
             mib_to_sectors(1024 + 1, sector_size),
             mib_to_sectors(total_ram, sector_size) + mib_to_sectors(1024 + 1, sector_size),
         );
-        ped_disk_add_partition(disk, swap, ped_constraint_any(device));
+        if swap.is_null() {
+            eprintln!("Failed to add the swap partition to disk");
+            parted_cleanup(disk, device);
+        }
+        if ped_disk_add_partition(disk, swap, ped_constraint_any(device)) == 0 {
+            eprintln!("Failed to write the swap partition to disk");
+            parted_cleanup(disk, device);
+        };
 
         let root = ped_partition_new(
             disk,
@@ -182,14 +196,23 @@ fn create_partitions(device_path: &str, sector_size: i64) {
             mib_to_sectors(total_ram + 1024 + 2, sector_size).into(),
             end,
         );
-        ped_disk_add_partition(disk, root, ped_constraint_any(device));
+        if root.is_null() {
+            eprintln!("Failed to add the root partition to disk");
+            parted_cleanup(disk, device);
+        }
+        if ped_disk_add_partition(disk, root, ped_constraint_any(device)) == 0 {
+            eprintln!("Failed to write the root partition to disk");
+            parted_cleanup(disk, device);
+        };
 
         if ped_disk_commit_to_dev(disk) == 0 {
             eprintln!("Failed to write changes to disk");
+            parted_cleanup(disk, device);
         };
 
         if ped_disk_commit_to_os(disk) == 0 {
-            eprintln!("Failed to commit write changes to disk")
+            eprintln!("Failed to commit write changes to disk");
+            parted_cleanup(disk, device);
         };
     }
 }
