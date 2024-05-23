@@ -1,4 +1,5 @@
-use cryptsetup_rs::device::{deactivate, init};
+use cryptsetup_rs::device::*;
+use cryptsetup_rs::*;
 use libparted_sys::*;
 use nix::libc::{self};
 use nix::unistd::close;
@@ -19,6 +20,8 @@ use crate::funcs::{mib_to_sectors, parted_cleanup};
 mod funcs;
 
 static SECTOR_SIZE: Mutex<i64> = Mutex::new(0);
+static IS_SSD: Mutex<bool> = Mutex::new(false);
+static IS_NVME: Mutex<bool> = Mutex::new(false);
 
 fn main() {
     let mut wrong_option = false;
@@ -64,13 +67,27 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool, selected_disk:
         }
     }
 
-    match ssd.or(nvme) {
-        Some(match_str) => {
-            let regex_match = RegexMatch(match_str.as_str());
-            println!("\nSelected disk: {}\n", regex_match);
+    match (ssd, nvme) {
+        (Some(ssd_str), None) => {
+            let regex_match = RegexMatch(ssd_str.as_str());
+            println!("\nSelected SSD disk: {}\n", regex_match);
             *selected_disk = regex_match.to_string();
+            let mut is_ssd = IS_SSD.lock().unwrap();
+            *is_ssd = true;
         }
-        None => {
+        (None, Some(nvme_str)) => {
+            let regex_match = RegexMatch(nvme_str.as_str());
+            println!("\nSelected NVMe disk: {}\n", regex_match);
+            *selected_disk = regex_match.to_string();
+            let mut is_nvme = IS_NVME.lock().unwrap();
+            *is_nvme = true;
+        }
+        (Some(_), Some(_)) => {
+            eprintln!("Both SSD and NVMe options were provided, expected only one.");
+            *wrong_disk = true;
+            return;
+        }
+        (None, None) => {
             *wrong_disk = true;
             return;
         }
@@ -217,6 +234,38 @@ fn create_partitions(device_path: &str, sector_size: i64) {
     }
 }
 
+fn create_luks2_container(selected_disk: &str) -> io::Result<()> {
+    println!(
+        "IS_NVME: {:?}, IS_SSD: {:?}",
+        IS_NVME.lock().unwrap(),
+        IS_SSD.lock().unwrap()
+    );
+    let password = funcs::prompt("Enter a new password for the LUKS2 container: ");
+    let password_check = funcs::prompt("Please repeat your new password: ");
+
+    if password == password_check {
+        if *IS_NVME.lock().unwrap() == true {
+            init(selected_disk.to_owned() + "p3").map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        } else if *IS_SSD.lock().unwrap() == true {
+            init(selected_disk.to_owned() + "3").map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+            let luks_device = format(selected_disk.to_owned() + "3")
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+                .luks2("aes", "xts-plain", 256, None, None, None)
+                .label("root")
+                .argon2i("sha256", 200, 1, 1024, 1)
+                .start();
+
+            let device = open(selected_disk.to_owned() + "3")
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                .luks2();
+        }
+        Ok(())
+    } else {
+        return Err(io::Error::new(io::ErrorKind::Other, "Passwords do not match"));
+    }
+}
+
 fn disk_editing(selected_disk: &str) {
     let target = "/mnt";
     match funcs::umount(target, libc::MNT_FORCE | libc::MNT_DETACH) {
@@ -246,4 +295,8 @@ fn disk_editing(selected_disk: &str) {
 
     let size = SECTOR_SIZE.lock().unwrap();
     create_partitions(selected_disk, *size);
+
+    loop {
+        create_luks2_container(selected_disk);
+    }
 }
