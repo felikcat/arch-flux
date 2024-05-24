@@ -1,16 +1,22 @@
 use cryptsetup_rs::device::*;
-use cryptsetup_rs::*;
 use libparted_sys::*;
 use nix::libc::{self};
 use nix::unistd::close;
 use nix::{self, ioctl_read_bad};
 use regex::Regex;
 use std::ffi::CString;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::path::Path;
 use std::ptr::null_mut;
+// Do not use other Result functions!
+use core::result::Result;
 use std::sync::Mutex;
+use libcryptsetup_rs::{
+    consts::{flags::CryptVolumeKey, vals::EncryptionFormat},
+    CryptInit, LibcryptErr,
+};
 
 #[cfg(any(unix, target_os = "wasi"))]
 use std::os::fd::{AsRawFd, RawFd};
@@ -22,15 +28,18 @@ mod funcs;
 static SECTOR_SIZE: Mutex<i64> = Mutex::new(0);
 static IS_SSD: Mutex<bool> = Mutex::new(false);
 static IS_NVME: Mutex<bool> = Mutex::new(false);
+static WRONG_OPTION: Mutex<bool> = Mutex::new(false);
+static WRONG_DISK: Mutex<bool> = Mutex::new(false);
+static SAID_NO: Mutex<bool> = Mutex::new(false);
+static WRONG_PASSWORD: Mutex<bool> = Mutex::new(false);
 
 fn main() {
-    let mut wrong_option = false;
-    let mut wrong_disk = false;
     let mut selected_disk = "/dev/null".to_string();
 
     loop {
-        disk_selection(&mut wrong_option, &mut wrong_disk, &mut selected_disk);
-        if !wrong_disk && !wrong_disk {
+        disk_selection(&mut selected_disk);
+
+        if !*WRONG_OPTION.lock().unwrap() && !*WRONG_DISK.lock().unwrap() && !*SAID_NO.lock().unwrap() {
             break;
         }
     }
@@ -38,19 +47,19 @@ fn main() {
     disk_editing(&mut selected_disk);
 }
 
-fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool, selected_disk: &mut String) {
+fn disk_selection(selected_disk: &mut String) {
     // Clear terminal
     print!("{esc}c", esc = 27 as char);
 
-    if *wrong_option {
+    if *WRONG_OPTION.lock().unwrap() {
         println!("NOTICE: Please enter 'y' or 'n'.\n");
     }
-    if *wrong_disk {
+    if *WRONG_DISK.lock().unwrap() {
         println!("NOTICE: An invalid disk has been selected, try again.\n")
     }
 
-    *wrong_option = false;
-    *wrong_disk = false;
+    *WRONG_OPTION.lock().unwrap() = false;
+    *WRONG_DISK.lock().unwrap() = false;
 
     funcs::terminal("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS");
 
@@ -62,7 +71,7 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool, selected_disk:
     struct RegexMatch<'a>(&'a str); // Store
 
     impl<'a> Display for RegexMatch<'a> {
-        fn fmt(&self, format: &mut Formatter) -> Result {
+        fn fmt(&self, format: &mut Formatter) -> std::fmt::Result {
             write!(format, "{}", self.0)
         }
     }
@@ -72,23 +81,21 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool, selected_disk:
             let regex_match = RegexMatch(ssd_str.as_str());
             println!("\nSelected SSD disk: {}\n", regex_match);
             *selected_disk = regex_match.to_string();
-            let mut is_ssd = IS_SSD.lock().unwrap();
-            *is_ssd = true;
+            *IS_SSD.lock().unwrap() = true;
         }
         (None, Some(nvme_str)) => {
             let regex_match = RegexMatch(nvme_str.as_str());
             println!("\nSelected NVMe disk: {}\n", regex_match);
             *selected_disk = regex_match.to_string();
-            let mut is_nvme = IS_NVME.lock().unwrap();
-            *is_nvme = true;
+            *IS_NVME.lock().unwrap() = true;
         }
         (Some(_), Some(_)) => {
             eprintln!("Both SSD and NVMe options were provided, expected only one.");
-            *wrong_disk = true;
+            *WRONG_DISK.lock().unwrap() = true;
             return;
         }
         (None, None) => {
-            *wrong_disk = true;
+            *WRONG_DISK.lock().unwrap() = true;
             return;
         }
     }
@@ -97,9 +104,12 @@ fn disk_selection(wrong_option: &mut bool, wrong_disk: &mut bool, selected_disk:
 
     match input.to_lowercase().as_ref() {
         "y" if input.len() == 1 => return,
-        "n" if input.len() == 1 => disk_selection(wrong_option, wrong_disk, selected_disk),
+        "n" if input.len() == 1 => {
+            *SAID_NO.lock().unwrap() = true;
+            return;
+        }
         _ => {
-            *wrong_option = true;
+            *WRONG_OPTION.lock().unwrap() = true;
             return;
         }
     }
@@ -172,7 +182,10 @@ fn create_partitions(device_path: &str, sector_size: i64) {
         let page_size: i64 = sysconf(libc::_SC_PAGE_SIZE).try_into().unwrap();
         let total_ram: i64 = (total_pages * page_size) / (1024 * 1024);
 
-        println!("sector_size: {}, end: {}, total_ram: {}", sector_size, end, total_ram);
+        println!(
+            "sector_size: {} sectors, end: {} sectors, total_ram: {} MiB",
+            sector_size, end, total_ram
+        );
 
         let boot = ped_partition_new(
             disk,
@@ -234,36 +247,44 @@ fn create_partitions(device_path: &str, sector_size: i64) {
     }
 }
 
-fn create_luks2_container(selected_disk: &str) -> io::Result<()> {
-    println!(
-        "IS_NVME: {:?}, IS_SSD: {:?}",
-        IS_NVME.lock().unwrap(),
-        IS_SSD.lock().unwrap()
-    );
-    let password = funcs::prompt("Enter a new password for the LUKS2 container: ");
-    let password_check = funcs::prompt("Please repeat your new password: ");
+fn create_luks2_container(selected_disk: &str) -> Result<(), LibcryptErr> {
+    *WRONG_PASSWORD.lock().unwrap() = false;
 
-    if password == password_check {
-        if *IS_NVME.lock().unwrap() == true {
-            init(selected_disk.to_owned() + "p3").map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        } else if *IS_SSD.lock().unwrap() == true {
-            init(selected_disk.to_owned() + "3").map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let password = funcs::prompt_u8("Enter a new password for the LUKS2 container: ");
+    let password_check = funcs::prompt_u8("Please repeat your new password: ");
 
-            let luks_device = format(selected_disk.to_owned() + "3")
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                .luks2("aes", "xts-plain", 256, None, None, None)
-                .label("root")
-                .argon2i("sha256", 200, 1, 1024, 1)
-                .start();
-
-            let device = open(selected_disk.to_owned() + "3")
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-                .luks2();
-        }
-        Ok(())
-    } else {
-        return Err(io::Error::new(io::ErrorKind::Other, "Passwords do not match"));
+    if password != password_check {
+        *WRONG_PASSWORD.lock().unwrap() = true;
+        return Err(LibcryptErr::Other("Passwords do not match, try again.".to_string()));
     }
+
+    let mut luks_part = selected_disk.to_string();
+
+    if *IS_NVME.lock().unwrap() == true {
+        luks_part.push_str("p3");
+    } else if *IS_SSD.lock().unwrap() == true {
+        luks_part.push_str("3");
+    }
+    
+    let luks_part_str: &str = &luks_part;
+
+    let sd = Path::new(luks_part_str);
+    let mut device = CryptInit::init(sd)?;
+
+    device.context_handle().format::<()>(
+        EncryptionFormat::Luks2,
+        ("aes", "xts-plain"),
+        None,
+        libcryptsetup_rs::Either::Right(512 / 8), // 512bit key
+        None,
+    )?;
+    device.context_handle().set_label(Some("root"), Some("btrfs"))?;
+
+    device
+        .keyslot_handle()
+        .add_by_key(None, None, &password, CryptVolumeKey::SET)?;
+
+    Ok(())
 }
 
 fn disk_editing(selected_disk: &str) {
@@ -296,7 +317,20 @@ fn disk_editing(selected_disk: &str) {
     let size = SECTOR_SIZE.lock().unwrap();
     create_partitions(selected_disk, *size);
 
+    println!(
+        "IS_NVME: {:?}, IS_SSD: {:?}",
+        IS_NVME.lock().unwrap(),
+        IS_SSD.lock().unwrap()
+    );
+
     loop {
-        create_luks2_container(selected_disk);
+        match create_luks2_container(selected_disk) {
+            Ok(_) => println!("LUKS2 container successfully created"),
+            Err(e) => eprintln!("Failed to create LUKS2 container: {:?}", e),
+        };
+
+        if !*WRONG_PASSWORD.lock().unwrap() {
+            break;
+        }
     }
 }

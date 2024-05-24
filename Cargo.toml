@@ -8,3 +8,4 @@ regex = "1.10.4"
 cryptsetup-rs = "0.3.2"
 nix = { version = "0.28.0", features = [ "fs", "ioctl" ] }
 libparted-sys = "0.3.2"
+libcryptsetup-rs = "0.9.3"

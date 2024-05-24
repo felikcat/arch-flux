@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::process::Command;
 use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
@@ -14,12 +14,33 @@ pub fn prompt(description: &str) -> String {
     s.trim().to_string()
 }
 
+pub fn prompt_u8(description: &str) -> Vec<u8> {
+    print!("{description}");
+
+    io::stdout().flush().expect("Failed to flush stdout");
+
+    let mut buffer = Vec::new();
+    let mut reader = BufReader::new(io::stdin());
+    
+    reader.read_until(b'\n', &mut buffer).expect("Failed to read line");
+
+    if let Some(&b'\n') = buffer.last() {
+        buffer.pop();  // Remove newline
+        if buffer.last() == Some(&b'\r') {
+            buffer.pop();  // Remove carriage return on Windows
+        }
+    }
+
+    buffer
+}
+
+
 pub fn terminal(description: &str) {
     let output = Command::new("sh")
         .arg("-c")
         .arg(description)
         .output()
-        .expect("Failed to execute");
+        .expect("Failed to execute shell command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     println!("{}", stdout);
