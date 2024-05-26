@@ -6,22 +6,20 @@ use nix::{self, ioctl_read_bad};
 use regex::Regex;
 use std::ffi::CString;
 use std::fmt::{Display, Formatter};
-use std::fs::{File, OpenOptions};
+use std::fs::{remove_file, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 use std::ptr::null_mut;
 // Do not use other Result functions!
 use core::result::Result;
-use std::sync::Mutex;
 use libcryptsetup_rs::{
     consts::{flags::CryptVolumeKey, vals::EncryptionFormat},
     CryptInit, LibcryptErr,
 };
-
-#[cfg(any(unix, target_os = "wasi"))]
 use std::os::fd::{AsRawFd, RawFd};
+use std::sync::Mutex;
 
-use crate::funcs::{mib_to_sectors, parted_cleanup};
+use crate::funcs::{mib_to_sectors, parted_cleanup, prompt, run_command};
 
 mod funcs;
 
@@ -33,7 +31,7 @@ static WRONG_DISK: Mutex<bool> = Mutex::new(false);
 static SAID_NO: Mutex<bool> = Mutex::new(false);
 static WRONG_PASSWORD: Mutex<bool> = Mutex::new(false);
 
-fn main() {
+fn main() -> io::Result<()> {
     let mut selected_disk = "/dev/null".to_string();
 
     loop {
@@ -45,6 +43,18 @@ fn main() {
     }
 
     disk_editing(&mut selected_disk);
+
+    let file_path = "/root/selected_disk.cfg";
+
+    if let Err(e) = remove_file(file_path) {
+        eprintln!("Failed to delete disk configuration file, this is OK: {}", e);
+    }
+
+    let mut config = File::create(file_path)?;
+    let sd_with_newline = format!("{}\n", selected_disk);
+    config.write_all(sd_with_newline.as_bytes())?;
+
+    Ok(())
 }
 
 fn disk_selection(selected_disk: &mut String) {
@@ -61,9 +71,12 @@ fn disk_selection(selected_disk: &mut String) {
     *WRONG_OPTION.lock().unwrap() = false;
     *WRONG_DISK.lock().unwrap() = false;
 
-    funcs::terminal("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS");
+    if let Err(e) = run_command("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS") {
+        eprintln!("Failed to list disks, this is important information: {}", e);
+        std::process::exit(1)
+    }
 
-    let input = funcs::prompt("\nExample disks: /dev/sda, /dev/nvme0n1.\nInput your desired disk, then press ENTER: ");
+    let input = prompt("\nExample disks: /dev/sda, /dev/nvme0n1.\nInput your desired disk, then press ENTER: ");
 
     let ssd = Regex::new(r"/dev/sd[a-z]").unwrap().find(&input);
     let nvme = Regex::new(r"/dev/(nvme|mmc)([0-9])n1").unwrap().find(&input);
@@ -90,7 +103,7 @@ fn disk_selection(selected_disk: &mut String) {
             *IS_NVME.lock().unwrap() = true;
         }
         (Some(_), Some(_)) => {
-            eprintln!("Both SSD and NVMe options were provided, expected only one.");
+            eprintln!("Both an SSD and NVMe was provided, expected only one.");
             *WRONG_DISK.lock().unwrap() = true;
             return;
         }
@@ -100,7 +113,7 @@ fn disk_selection(selected_disk: &mut String) {
         }
     }
 
-    let input = funcs::prompt("Are you sure [y/n]: ");
+    let input = prompt("Are you sure [y/n]: ");
 
     match input.to_lowercase().as_ref() {
         "y" if input.len() == 1 => return,
@@ -250,7 +263,7 @@ fn create_partitions(device_path: &str, sector_size: i64) {
 fn create_luks2_container(selected_disk: &str) -> Result<(), LibcryptErr> {
     *WRONG_PASSWORD.lock().unwrap() = false;
 
-    let password = funcs::prompt_u8("Enter a new password for the LUKS2 container: ");
+    let password = funcs::prompt_u8("\nEnter a new password for the LUKS2 container: ");
     let password_check = funcs::prompt_u8("Please repeat your new password: ");
 
     if password != password_check {
@@ -265,7 +278,7 @@ fn create_luks2_container(selected_disk: &str) -> Result<(), LibcryptErr> {
     } else if *IS_SSD.lock().unwrap() == true {
         luks_part.push_str("3");
     }
-    
+
     let luks_part_str: &str = &luks_part;
 
     let sd = Path::new(luks_part_str);
@@ -325,7 +338,7 @@ fn disk_editing(selected_disk: &str) {
 
     loop {
         match create_luks2_container(selected_disk) {
-            Ok(_) => println!("LUKS2 container successfully created"),
+            Ok(_) => println!("LUKS2 container successfully created; disk formatting complete!\n"),
             Err(e) => eprintln!("Failed to create LUKS2 container: {:?}", e),
         };
 
