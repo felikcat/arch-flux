@@ -321,8 +321,8 @@ fn disk_editing(selected_disk: &str) {
     let path = init("/dev/mapper/cleanit").unwrap();
     let _ = deactivate(path, "cleanit");
 
-    File::create("/dev/mapper/root").unwrap();
-    let path = init("/dev/mapper/root").unwrap();
+    File::create("/dev/mapper/arch").unwrap();
+    let path = init("/dev/mapper/arch").unwrap();
     let _ = deactivate(path, "arch");
 
     if let Err(e) = wipe_disk(selected_disk) {
