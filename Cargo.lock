@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "cryptsetup-rs",
  "libcryptsetup-rs",
+ "libcryptsetup-rs-sys",
  "libparted-sys",
  "nix",
  "regex",

@@ -1,3 +1,4 @@
+use libcryptsetup_rs::LibcryptErr;
 use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 use std::fs::File;
@@ -35,13 +36,43 @@ pub fn prompt_u8(description: &str) -> Vec<u8> {
     buffer
 }
 
-pub fn run_command(description: &str) -> io::Result<()> {
-    let output = Command::new("sh").arg("-c").arg(description).output()?;
+pub fn run_shell_command(command: &str) -> io::Result<()> {
+    let output = Command::new("sh").arg("-c").arg(command).output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     println!("{}", stdout);
 
-    Ok(())
+    if output.status.success() {
+        Ok(())
+    } else {
+        eprintln!(
+            "Error executing {}: {}",
+            command,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Command execution failed",
+        ))
+    }
+}
+
+pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<()> {
+    let output = Command::new(command).args(args).output()?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        eprintln!(
+            "Error executing {}: {}",
+            command,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Command execution failed",
+        ))
+    }
 }
 
 pub fn umount(target: &str, flags: libc::c_int) -> Result<(), String> {
@@ -106,4 +137,12 @@ pub fn fetch_disk() -> io::Result<String> {
     } else {
         Ok(contents.replace("\n", "")) // Incase someone uses Vim to manually input the disk.
     }
+}
+
+pub fn create_sub_volumes(subvol_list: &[String]) -> io::Result<()> {
+    for subvol in subvol_list {
+        let path = format!("/mnt/@{}", subvol);
+        run_command("btrfs", &["subvolume", "create", &path])?;
+    }
+    Ok(())
 }

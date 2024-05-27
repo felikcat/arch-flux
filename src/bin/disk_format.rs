@@ -1,4 +1,5 @@
 use cryptsetup_rs::device::*;
+use libcryptsetup_rs::consts::flags::CryptActivate;
 use libparted_sys::*;
 use nix::libc::{self};
 use nix::unistd::close;
@@ -19,7 +20,7 @@ use libcryptsetup_rs::{
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Mutex;
 
-use crate::funcs::{mib_to_sectors, parted_cleanup, prompt, run_command};
+use crate::funcs::{mib_to_sectors, parted_cleanup, prompt, run_shell_command};
 
 mod funcs;
 
@@ -71,7 +72,7 @@ fn disk_selection(selected_disk: &mut String) {
     *WRONG_OPTION.lock().unwrap() = false;
     *WRONG_DISK.lock().unwrap() = false;
 
-    if let Err(e) = run_command("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS") {
+    if let Err(e) = run_shell_command("lsblk -o PATH,MODEL,PARTLABEL,FSTYPE,FSVER,SIZE,FSUSE%,FSAVAIL,MOUNTPOINTS") {
         eprintln!("Failed to list disks, this is important information: {}", e);
         std::process::exit(1)
     }
@@ -291,11 +292,13 @@ fn create_luks2_container(selected_disk: &str) -> Result<(), LibcryptErr> {
         libcryptsetup_rs::Either::Right(512 / 8), // 512bit key
         None,
     )?;
-    device.context_handle().set_label(Some("root"), Some("btrfs"))?;
 
     device
         .keyslot_handle()
-        .add_by_key(None, None, &password, CryptVolumeKey::SET)?;
+        .add_by_key(None, None, &password, CryptVolumeKey::empty())?;
+    
+    device.context_handle().load::<()>(None, None)?;
+    device.activate_handle().activate_by_passphrase(Some("root"), Some(libcryptsetup_rs_sys::CRYPT_ANY_SLOT as u32), &password, CryptActivate::empty())?;
 
     Ok(())
 }
