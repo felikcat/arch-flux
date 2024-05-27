@@ -40,7 +40,7 @@ fn checks() -> std::io::Result<String> {
     disk // Return result directly
 }
 
-fn create_filesystems(disk: &str) -> std::io::Result<()> {
+fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
     let location = "/dev/mapper/arch";
     let boot_part = format!("{}1", disk);
 
@@ -48,6 +48,12 @@ fn create_filesystems(disk: &str) -> std::io::Result<()> {
         .split(' ')
         .map(String::from)
         .collect();
+    let subvol_mount_list: Vec<String> = "root btrfs srv pkg log home"
+        .split(' ')
+        .map(String::from)
+        .collect();
+
+    let opts = "noatime,compress=zstd:1";
 
     let _ = run_command("umount", &["-flRq", "/mnt"]);
 
@@ -66,15 +72,16 @@ fn create_filesystems(disk: &str) -> std::io::Result<()> {
     run_command("mount", &["-t", "btrfs", &location, "/mnt"])?;
 
     let base_path = "/mnt";
+    // Has to be this specific order, otherwise it will fail in the for(subvol, dir) loop
     let directories = [
-        "tmp",
-        "boot",
-        "btrfs",
-        "var/log",
-        "var/cache/pacman/pkg",
-        "srv",
         "root",
+        "btrfs",
+        "srv",
+        "var/cache/pacman/pkg",
+        "var/log",
         "home",
+        "tmp",
+        "boot",        
     ];
 
     for dir in directories.iter() {
@@ -91,6 +98,36 @@ fn create_filesystems(disk: &str) -> std::io::Result<()> {
     )?;
 
     create_sub_volumes(&subvol_list)?;
+
+    run_command(
+        "mount",
+        &[
+            "-t",
+            "btrfs",
+            "-o",
+            &format!("{}{}", opts, ",subvolid=5"),
+            &location,
+            "/mnt/btrfs",
+        ],
+    )?;
+
+    for (subvol, dir) in subvol_mount_list.iter().zip(directories.iter()) {
+        let full_path = format!("{}/{}", base_path, dir);
+        match run_command(
+            "mount",
+            &[
+                "-t",
+                "btrfs",
+                "-o",
+                &format!("{}{}", opts, &format!(",subvol=@{}", subvol)),
+                &location,
+                &full_path,
+            ],
+        ) {
+            Ok(_) => println!("Mounted subvolume '{}' at '{}'", subvol, full_path),
+            Err(e) => println!("Failed to mount subvolume '{}' at '{}': {}", subvol, full_path, e),
+        }
+    }
 
     Ok(())
 }
@@ -122,5 +159,8 @@ fn main() {
             return;
         }
     }
-    create_filesystems(disk_str);
+    if let Err(e) = create_and_mount_filesystems(disk_str) {
+        eprintln!("create_and_mount_filesystems failed: {}", e);
+        return;
+    }
 }
