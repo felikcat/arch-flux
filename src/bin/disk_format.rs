@@ -298,7 +298,7 @@ fn create_luks2_container(selected_disk: &str) -> Result<(), LibcryptErr> {
         .add_by_key(None, None, &password, CryptVolumeKey::empty())?;
     
     device.context_handle().load::<()>(None, None)?;
-    device.activate_handle().activate_by_passphrase(Some("root"), Some(libcryptsetup_rs_sys::CRYPT_ANY_SLOT as u32), &password, CryptActivate::empty())?;
+    device.activate_handle().activate_by_passphrase(Some("arch"), Some(libcryptsetup_rs_sys::CRYPT_ANY_SLOT as u32), &password, CryptActivate::empty())?;
 
     Ok(())
 }
@@ -323,7 +323,7 @@ fn disk_editing(selected_disk: &str) {
 
     File::create("/dev/mapper/root").unwrap();
     let path = init("/dev/mapper/root").unwrap();
-    let _ = deactivate(path, "root");
+    let _ = deactivate(path, "arch");
 
     if let Err(e) = wipe_disk(selected_disk) {
         eprintln!("Failed to wipe disk '{}': {}", selected_disk, e);

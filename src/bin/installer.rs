@@ -40,7 +40,7 @@ fn checks() -> std::io::Result<String> {
 }
 
 fn create_filesystems(disk: &str) -> std::io::Result<()> {
-    let location = "/dev/mapper/root";
+    let location = "/dev/mapper/arch";
     let boot_part = "$(blkid -s PARTLABEL | sed -n '/BOOTEFI/p' | cut -f1 -d' ' | tr -d :)";
 
     let subvol_list: Vec<String> = "root btrfs srv snapshots pkg log home"
