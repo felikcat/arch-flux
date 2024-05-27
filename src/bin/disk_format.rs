@@ -55,6 +55,16 @@ fn main() -> io::Result<()> {
     let sd_with_newline = format!("{}\n", selected_disk);
     config.write_all(sd_with_newline.as_bytes())?;
 
+    let disk_type = if *IS_NVME.lock().unwrap() {
+        "NVME"
+    } else if *IS_SSD.lock().unwrap() {
+        "SSD"
+    } else {
+        "Unknown"
+    };
+    let result = format!("{}\n", disk_type);
+    config.write_all(result.as_bytes())?;
+
     Ok(())
 }
 

@@ -1,6 +1,7 @@
 use funcs::{archiso_check, create_sub_volumes, fetch_disk, run_command, run_shell_command};
 use std::{
-    fs, io::Error, process::{self, Command, Stdio}, sync::{Arc, Mutex}
+    fs,
+    process::{self, Command, Stdio},
 };
 
 mod funcs;
@@ -41,12 +42,14 @@ fn checks() -> std::io::Result<String> {
 
 fn create_filesystems(disk: &str) -> std::io::Result<()> {
     let location = "/dev/mapper/arch";
-    let boot_part = "$(blkid -s PARTLABEL | sed -n '/BOOTEFI/p' | cut -f1 -d' ' | tr -d :)";
+    let boot_part = format!("{}1", disk);
 
     let subvol_list: Vec<String> = "root btrfs srv snapshots pkg log home"
-        .split(',')
+        .split(' ')
         .map(String::from)
         .collect();
+
+    let _ = run_command("umount", &["-flRq", "/mnt"]);
 
     // Check if there's already a Btrfs file system
     if !Command::new("lsblk")
@@ -56,37 +59,38 @@ fn create_filesystems(disk: &str) -> std::io::Result<()> {
         .windows(5)
         .any(|window| window == b"btrfs")
     {
-        let _ = run_command("umount", &["-flRq", "/mnt"]);
         run_command("mkfs.btrfs", &[&location])?;
-        run_command("mount", &["-t", "btrfs", &location, "/mnt"])?;
-
-        let base_path = "/mnt";
-        let directories = [
-            "tmp",
-            "boot",
-            "btrfs",
-            "var/log",
-            "var/cache/pacman/pkg",
-            "srv",
-            "root",
-            "home",
-        ];
-
-        for dir in directories.iter() {
-            let full_path = format!("{}/{}", base_path, dir);
-            match fs::create_dir_all(&full_path) {
-                Ok(_) => println!("Created directory: {}", full_path),
-                Err(e) => println!("Failed to create directory '{}': {}", full_path, e),
-            }
-        }
-
-        run_command(
-            "mount",
-            &["-t", "vfat", "-o", "nodev,nosuid,noexec", &boot_part, "/mnt/boot"],
-        )?;
-
-        create_sub_volumes(&subvol_list)?;
+        run_command("mkfs.fat -F 32", &[&boot_part])?;
     }
+
+    run_command("mount", &["-t", "btrfs", &location, "/mnt"])?;
+
+    let base_path = "/mnt";
+    let directories = [
+        "tmp",
+        "boot",
+        "btrfs",
+        "var/log",
+        "var/cache/pacman/pkg",
+        "srv",
+        "root",
+        "home",
+    ];
+
+    for dir in directories.iter() {
+        let full_path = format!("{}/{}", base_path, dir);
+        match fs::create_dir_all(&full_path) {
+            Ok(_) => println!("Created directory: {}", full_path),
+            Err(e) => println!("Failed to create directory '{}': {}", full_path, e),
+        }
+    }
+
+    run_command(
+        "mount",
+        &["-t", "vfat", "-o", "nodev,nosuid,noexec", &boot_part, "/mnt/boot"],
+    )?;
+
+    create_sub_volumes(&subvol_list)?;
 
     Ok(())
 }

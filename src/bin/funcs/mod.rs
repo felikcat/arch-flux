@@ -1,6 +1,7 @@
-use libcryptsetup_rs::LibcryptErr;
+#![allow(dead_code)]
 use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
+use regex::Regex;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::process::Command;
@@ -135,14 +136,31 @@ pub fn fetch_disk() -> io::Result<String> {
         eprintln!("Disk not found in /root/selected_disk.cfg, did you run the disk format utility, or forgot to input the disk manually?");
         std::process::exit(1);
     } else {
-        Ok(contents.replace("\n", "")) // Incase someone uses Vim to manually input the disk.
+        let input = contents.replace("\n", ""); // Incase someone uses Vim to manually input the disk.
+
+        let ssd = Regex::new(r"/dev/sd[a-z]").unwrap().find(&input);
+        let nvme = Regex::new(r"/dev/(nvme|mmc)([0-9])n1").unwrap().find(&input);
+
+        let input = if let Some(ssd) = ssd {
+            ssd.as_str().to_string()
+        } else if let Some(nvme) = nvme {
+            nvme.as_str().to_string()
+        } else {
+            eprintln!("Invalid disk format");
+            std::process::exit(1);
+        };
+        Ok(input)
     }
 }
 
 pub fn create_sub_volumes(subvol_list: &[String]) -> io::Result<()> {
     for subvol in subvol_list {
         let path = format!("/mnt/@{}", subvol);
-        run_command("btrfs", &["subvolume", "create", &path])?;
+        if let Err(err) = run_command("btrfs", &["subvolume", "create", &path]) {
+            eprintln!("Failed to create subvolume {}: {}", subvol, err);
+        } else {
+            println!("Successfully created subvolume: {}", subvol);
+        }
     }
     Ok(())
 }
