@@ -21,7 +21,7 @@ fn checks() -> std::io::Result<String> {
     }
 
     let cryptsetup_status = Command::new("cryptsetup")
-        .args(["status", "root"])
+        .args(["status", "arch"])
         .stdout(Stdio::piped()) // To pipe the output to another command
         .spawn()
         .expect("Failed to start cryptsetup command");
