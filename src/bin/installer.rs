@@ -1,3 +1,6 @@
+use console::{Color, Term};
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::{Confirm, FuzzySelect, Input, MultiSelect, Select, Sort};
 use funcs::{archiso_check, create_sub_volumes, fetch_disk, run_command, run_shell_command};
 use std::{
     fs,
@@ -48,12 +51,9 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         .split(' ')
         .map(String::from)
         .collect();
-    let subvol_mount_list: Vec<String> = "root btrfs srv pkg log home"
-        .split(' ')
-        .map(String::from)
-        .collect();
+    let subvol_mount_list: Vec<String> = "root btrfs srv pkg log home".split(' ').map(String::from).collect();
 
-    let opts = "noatime,compress=zstd:1";
+    let btrfs_options = "noatime,compress=zstd:1";
 
     let _ = run_command("umount", &["-flRq", "/mnt"]);
 
@@ -81,7 +81,12 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         "var/log",
         "home",
         "tmp",
-        "boot",        
+        // The following below might not be required after running pacstrap
+        "boot",
+        "proc",
+        "sys",
+        "dev",
+        "run",
     ];
 
     for dir in directories.iter() {
@@ -105,7 +110,7 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
             "-t",
             "btrfs",
             "-o",
-            &format!("{}{}", opts, ",subvolid=5"),
+            &format!("{}{}", btrfs_options, ",subvolid=5"),
             &location,
             "/mnt/btrfs",
         ],
@@ -119,7 +124,7 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
                 "-t",
                 "btrfs",
                 "-o",
-                &format!("{}{}", opts, &format!(",subvol=@{}", subvol)),
+                &format!("{}{}", btrfs_options, &format!(",subvol=@{}", subvol)),
                 &location,
                 &full_path,
             ],
@@ -132,22 +137,134 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn main() {
+fn user_configuration() {
+    loop {
+        let items = vec![
+            "Keyboard Layout",
+            "username",
+            "hostname",
+            "gpu_selected",
+            "nvidia_stream_memory_operations",
+            "intel_video_accel",
+            "no_mitigations",
+            "hardware_printers_and_scanners",
+            "hardware_wifi_and_bluetooth",
+            "EXIT",
+        ];
+
+        let selection = Select::new()
+            .with_prompt("Select the items you want to configure")
+            .items(&items)
+            .interact()
+            .unwrap();
+
+        println!("You chose: {}", items[selection]);
+
+        match items[selection] {
+            "Keyboard Layout" => {
+                let items = vec![
+                    "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
+                    "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
+                ];
+                let keyboard_layout = FuzzySelect::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Select your keyboard layout: ")
+                    .items(&items)
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", keyboard_layout);
+            }
+            "username" => {
+                let username = Input::<String>::new()
+                    .with_prompt("\nEnter your username")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", username);
+            }
+            "hostname" => {
+                let hostname = Input::<String>::new()
+                    .with_prompt("\nEnter your hostname")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", hostname);
+            }
+            "gpu_selected" => {
+                let gpu_selected = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("\nSelect your GPU")
+                    .default(0)
+                    .items(&["NVIDIA", "Intel", "AMD"])
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", gpu_selected);
+            }
+            "nvidia_stream_memory_operations" => {
+                let nvidia_stream_memory_operations = Confirm::new()
+                    .with_prompt("\nEnable Nvidia Stream Memory Operations?")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", nvidia_stream_memory_operations);
+            }
+            "intel_video_accel" => {
+                let items = vec![
+                    "Intel GMA 4500 (2008) up to Coffee Lake's (2017) HD Graphics",
+                    "Intel HD Graphics series starting from Broadwell (2014) and newer",
+                ];
+                let intel_video_accel = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Select your Intel GPU generation")
+                    .default(0)
+                    .items(&items)
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", intel_video_accel);
+            }
+            "no_mitigations" => {
+                let no_mitigations = Confirm::new()
+                    .with_prompt("Disable all CPU mitigations?")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", no_mitigations);
+            }
+            "hardware_printers_and_scanners" => {
+                let hardware_printers_and_scanners = Confirm::new()
+                    .with_prompt("Install printer and scanner drivers?")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", hardware_printers_and_scanners);
+            }
+            "hardware_wifi_and_bluetooth" => {
+                let hardware_wifi_and_bluetooth = Confirm::new()
+                    .with_prompt("Install wifi and bluetooth drivers?")
+                    .interact()
+                    .unwrap();
+                println!("You chose: {}\n", hardware_wifi_and_bluetooth);
+            }
+            "EXIT" => {
+                break;
+            }
+            _ => {
+                eprintln!("Invalid selection: {}", items[selection]);
+            }
+        }
+    }
+}
+
+fn main() -> std::io::Result<()> {
     let disk = checks();
     let disk_str: &str = match disk {
         Ok(ref s) => s,
         Err(e) => {
-            eprintln!("Failed to get string: {}", e);
-            return;
+            eprintln!("Failed to get 'disk' string: {}", e);
+            return Err(e);
         }
     };
+
+    user_configuration();
 
     let set_ntp = run_shell_command("timedatectl set-ntp true");
     match set_ntp {
         Ok(_) => println!("NTP enabled successfully"),
         Err(e) => {
             eprintln!("Failed to enable NTP: {}", e);
-            return;
+            return Err(e);
         }
     }
 
@@ -156,11 +273,30 @@ fn main() {
         Ok(_) => println!("NTP service restarted"),
         Err(e) => {
             eprintln!("Failed to restart NTP service: {}", e);
-            return;
+            return Err(e);
         }
     }
     if let Err(e) = create_and_mount_filesystems(disk_str) {
         eprintln!("create_and_mount_filesystems failed: {}", e);
-        return;
+        return Err(e);
     }
+
+    let _ = fs::remove_file("/mnt/var/lib/pacman/db.lck");
+    run_shell_command("pacstrap -K /mnt cryptsetup dosfstools btrfs-progs base base-devel git zsh grml-zsh-config --noconfirm --ask=4 --needed")?;
+
+    if cfg!(debug_assertions) {
+        fs::copy(
+            "/media/sf_arch-flux-c/target/debug/post_chroot",
+            "/mnt/root/post_chroot",
+        )?;
+    } else {
+        fs::copy("/root/post_chroot", "/mnt/root/post_chroot")?;
+    }
+
+    fs::copy("/root/selected_disk.cfg", "/mnt/root/selected_disk.cfg")?;
+
+    run_shell_command("chmod +x /mnt/root/post_chroot")?;
+    run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
+
+    Ok(())
 }
