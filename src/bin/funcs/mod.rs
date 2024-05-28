@@ -2,7 +2,7 @@
 use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 use regex::Regex;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::process::Command;
 
@@ -162,5 +162,27 @@ pub fn create_sub_volumes(subvol_list: &[String]) -> io::Result<()> {
             println!("Successfully created subvolume: {}", subvol);
         }
     }
+    Ok(())
+}
+
+// BUG: there will be duplicate lines due to the loop if someone picks two different choices for the same option
+pub fn user_selection_write(value: &str, line: &str) -> io::Result<()> {
+    let file_path = "/root/user_selections.cfg";
+    let file_content = fs::read_to_string(file_path)?;
+    
+    let formatted_entry = format!("{}{}", line, value);
+
+    // Check if the exact entry exists in the file by splitting into lines.
+    let exists = file_content.lines().any(|entry| entry == formatted_entry.trim());
+
+    if !exists {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(file_path)?;
+        
+        writeln!(file, "{}", formatted_entry.trim())?;
+    }
+
     Ok(())
 }

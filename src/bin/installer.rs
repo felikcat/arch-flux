@@ -1,7 +1,8 @@
-use console::{Color, Term};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, FuzzySelect, Input, MultiSelect, Select, Sort};
-use funcs::{archiso_check, create_sub_volumes, fetch_disk, run_command, run_shell_command};
+use funcs::{archiso_check, create_sub_volumes, fetch_disk, run_command, run_shell_command, user_selection_write};
+use std::io::Write;
+use std::fs::File;
 use std::{
     fs,
     process::{self, Command, Stdio},
@@ -137,28 +138,30 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn user_configuration() {
+fn user_configuration() -> std::io::Result<()> {    
+    File::create("/root/user_selections.cfg")?;
+
     loop {
         let items = vec![
             "Keyboard Layout",
-            "username",
-            "hostname",
-            "gpu_selected",
+            "Username",
+            "Hostname",
+            "Select GPU type to install drivers for",
             "nvidia_stream_memory_operations",
-            "intel_video_accel",
-            "no_mitigations",
-            "hardware_printers_and_scanners",
-            "hardware_wifi_and_bluetooth",
-            "EXIT",
+            "Configure Intel GPU video acceleration",
+            "Disable all CPU mitigations",
+            "Install Printer and Scanner support",
+            "Install Wi-Fi and Bluetooth support",
+            "Continue / Exit",
         ];
 
-        let selection = Select::new()
+        let theme = ColorfulTheme::default();
+
+        let selection = Select::with_theme(&theme)
             .with_prompt("Select the items you want to configure")
             .items(&items)
             .interact()
             .unwrap();
-
-        println!("You chose: {}", items[selection]);
 
         match items[selection] {
             "Keyboard Layout" => {
@@ -166,79 +169,97 @@ fn user_configuration() {
                     "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
                     "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
                 ];
-                let keyboard_layout = FuzzySelect::with_theme(&ColorfulTheme::default())
+                let keyboard_layout = FuzzySelect::with_theme(&theme)
                     .with_prompt("Select your keyboard layout: ")
                     .items(&items)
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", keyboard_layout);
+
+                let line = format!("keyboard_layout=");
+                user_selection_write(&keyboard_layout.to_string(), &line)?;
             }
-            "username" => {
-                let username = Input::<String>::new()
+            "Username" => {
+                let username = Input::<String>::with_theme(&theme)
                     .with_prompt("\nEnter your username")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", username);
+
+                let line = format!("username=");
+                user_selection_write(&username.to_string(), &line)?;
             }
-            "hostname" => {
-                let hostname = Input::<String>::new()
+            "Hostname" => {
+                let hostname = Input::<String>::with_theme(&theme)
                     .with_prompt("\nEnter your hostname")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", hostname);
+
+                let line = format!("hostname=");
+                user_selection_write(&hostname.to_string(), &line)?;
             }
-            "gpu_selected" => {
-                let gpu_selected = Select::with_theme(&ColorfulTheme::default())
+            "Select GPU type to install drivers for" => {
+                let gpu_selected = Select::with_theme(&theme)
                     .with_prompt("\nSelect your GPU")
                     .default(0)
                     .items(&["NVIDIA", "Intel", "AMD"])
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", gpu_selected);
+
+                let line = format!("gpu_selected=");
+                user_selection_write(&gpu_selected.to_string(), &line)?;
             }
             "nvidia_stream_memory_operations" => {
-                let nvidia_stream_memory_operations = Confirm::new()
+                let nvidia_stream_memory_operations = Confirm::with_theme(&theme)
                     .with_prompt("\nEnable Nvidia Stream Memory Operations?")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", nvidia_stream_memory_operations);
+
+                let line = format!("nvidia_stream_memory_operations=");
+                user_selection_write(&nvidia_stream_memory_operations.to_string(), &line)?;
             }
-            "intel_video_accel" => {
+            "Configure Intel GPU video acceleration" => {
                 let items = vec![
                     "Intel GMA 4500 (2008) up to Coffee Lake's (2017) HD Graphics",
                     "Intel HD Graphics series starting from Broadwell (2014) and newer",
                 ];
-                let intel_video_accel = Select::with_theme(&ColorfulTheme::default())
+                let intel_video_accel = Select::with_theme(&theme)
                     .with_prompt("Select your Intel GPU generation")
                     .default(0)
                     .items(&items)
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", intel_video_accel);
+
+                let line = format!("intel_video_accel=");
+                user_selection_write(&intel_video_accel.to_string(), &line)?;
             }
-            "no_mitigations" => {
-                let no_mitigations = Confirm::new()
+            "Disable all CPU mitigations" => {
+                let no_mitigations = Confirm::with_theme(&theme)
                     .with_prompt("Disable all CPU mitigations?")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", no_mitigations);
+
+                let line = format!("no_mitigations=");
+                user_selection_write(&no_mitigations.to_string(), &line)?;
             }
-            "hardware_printers_and_scanners" => {
-                let hardware_printers_and_scanners = Confirm::new()
+            "Install Printer and Scanner support" => {
+                let printers_and_scanners = Confirm::with_theme(&theme)
                     .with_prompt("Install printer and scanner drivers?")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", hardware_printers_and_scanners);
+
+                let line = format!("printers_and_scanners=");
+                user_selection_write(&printers_and_scanners.to_string(), &line)?;
             }
-            "hardware_wifi_and_bluetooth" => {
-                let hardware_wifi_and_bluetooth = Confirm::new()
-                    .with_prompt("Install wifi and bluetooth drivers?")
+            "Install Wi-Fi and Bluetooth support" => {
+                let wifi_and_bluetooth = Confirm::with_theme(&theme)
+                    .with_prompt("Install Wi-Fi and Bluetooth drivers?")
                     .interact()
                     .unwrap();
-                println!("You chose: {}\n", hardware_wifi_and_bluetooth);
+
+                let line = format!("hardware_wifi_and_bluetooth=");
+                user_selection_write(&wifi_and_bluetooth.to_string(), &line)?;
             }
-            "EXIT" => {
-                break;
+            "Continue / Exit" => {
+                break Ok(());
             }
             _ => {
                 eprintln!("Invalid selection: {}", items[selection]);
@@ -257,7 +278,7 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    user_configuration();
+    user_configuration()?;
 
     let set_ntp = run_shell_command("timedatectl set-ntp true");
     match set_ntp {

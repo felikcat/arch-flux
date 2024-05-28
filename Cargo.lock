@@ -15,7 +15,6 @@ dependencies = [
 name = "arch_flux"
 version = "0.1.0"
 dependencies = [
- "console",
  "cryptsetup-rs",
  "dialoguer",
  "libcryptsetup-rs",
