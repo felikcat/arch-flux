@@ -1,6 +1,6 @@
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, FuzzySelect, Input, MultiSelect, Select, Sort};
-use funcs::{archiso_check, create_sub_volumes, fetch_disk, run_command, run_shell_command, user_selection_write};
+use funcs::{archiso_check, config_write, create_sub_volumes, fetch_disk, run_command, run_shell_command, touch_file};
 use std::io::Write;
 use std::fs::File;
 use std::{
@@ -138,134 +138,134 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn user_configuration() -> std::io::Result<()> {    
-    File::create("/root/user_selections.cfg")?;
+fn user_configuration() -> std::io::Result<()> {
+    touch_file("/root/user_selections.cfg")?;
 
-    loop {
-        let items = vec![
-            "Keyboard Layout",
-            "Username",
-            "Hostname",
-            "Select GPU type to install drivers for",
-            "nvidia_stream_memory_operations",
-            "Configure Intel GPU video acceleration",
-            "Disable all CPU mitigations",
-            "Install Printer and Scanner support",
-            "Install Wi-Fi and Bluetooth support",
-            "Continue / Exit",
-        ];
+    let items = vec![
+        "Keyboard Layout",
+        "Username",
+        "Hostname",
+        "Select GPU type to install drivers for",
+        "nvidia_stream_memory_operations",
+        "Configure Intel GPU video acceleration",
+        "Disable all CPU mitigations",
+        "Printer and Scanner support",
+        "Wi-Fi and Bluetooth support",
+        "Continue / Exit",
+    ];
 
-        let theme = ColorfulTheme::default();
+    let theme = ColorfulTheme::default();
 
-        let selection = Select::with_theme(&theme)
-            .with_prompt("Select the items you want to configure")
-            .items(&items)
-            .interact()
-            .unwrap();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Select the items you want to configure")
+        .items(&items)
+        .interact()
+        .unwrap();
 
-        match items[selection] {
-            "Keyboard Layout" => {
-                let items = vec![
-                    "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
-                    "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
-                ];
-                let keyboard_layout = FuzzySelect::with_theme(&theme)
-                    .with_prompt("Select your keyboard layout: ")
-                    .items(&items)
-                    .interact()
-                    .unwrap();
+    match items[selection] {
+        "Keyboard Layout" => {
+            let items = vec![
+                "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
+                "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
+            ];
+            let keyboard_layout = FuzzySelect::with_theme(&theme)
+                .with_prompt("Select your keyboard layout: ")
+                .items(&items)
+                .interact()
+                .unwrap();
 
-                let line = format!("keyboard_layout=");
-                user_selection_write(&keyboard_layout.to_string(), &line)?;
-            }
-            "Username" => {
-                let username = Input::<String>::with_theme(&theme)
-                    .with_prompt("\nEnter your username")
-                    .interact()
-                    .unwrap();
+            let line = format!("keyboard_layout=");
+            config_write(&keyboard_layout.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Username" => {
+            let username = Input::<String>::with_theme(&theme)
+                .with_prompt("\nEnter your username")
+                .interact()
+                .unwrap();
 
-                let line = format!("username=");
-                user_selection_write(&username.to_string(), &line)?;
-            }
-            "Hostname" => {
-                let hostname = Input::<String>::with_theme(&theme)
-                    .with_prompt("\nEnter your hostname")
-                    .interact()
-                    .unwrap();
+            let line = format!("username=");
+            config_write(&username.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Hostname" => {
+            let hostname = Input::<String>::with_theme(&theme)
+                .with_prompt("\nEnter your hostname")
+                .interact()
+                .unwrap();
 
-                let line = format!("hostname=");
-                user_selection_write(&hostname.to_string(), &line)?;
-            }
-            "Select GPU type to install drivers for" => {
-                let gpu_selected = Select::with_theme(&theme)
-                    .with_prompt("\nSelect your GPU")
-                    .default(0)
-                    .items(&["NVIDIA", "Intel", "AMD"])
-                    .interact()
-                    .unwrap();
+            let line = format!("hostname=");
+            config_write(&hostname.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Select GPU type to install drivers for" => {
+            let gpu_selected = Select::with_theme(&theme)
+                .with_prompt("\nSelect your GPU")
+                .default(0)
+                .items(&["NVIDIA", "Intel", "AMD"])
+                .interact()
+                .unwrap();
 
-                let line = format!("gpu_selected=");
-                user_selection_write(&gpu_selected.to_string(), &line)?;
-            }
-            "nvidia_stream_memory_operations" => {
-                let nvidia_stream_memory_operations = Confirm::with_theme(&theme)
-                    .with_prompt("\nEnable Nvidia Stream Memory Operations?")
-                    .interact()
-                    .unwrap();
+            let line = format!("gpu_selected=");
+            config_write(&gpu_selected.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "nvidia_stream_memory_operations" => {
+            let nvidia_stream_memory_operations = Confirm::with_theme(&theme)
+                .with_prompt("\nEnable Nvidia Stream Memory Operations?")
+                .interact()
+                .unwrap();
 
-                let line = format!("nvidia_stream_memory_operations=");
-                user_selection_write(&nvidia_stream_memory_operations.to_string(), &line)?;
-            }
-            "Configure Intel GPU video acceleration" => {
-                let items = vec![
-                    "Intel GMA 4500 (2008) up to Coffee Lake's (2017) HD Graphics",
-                    "Intel HD Graphics series starting from Broadwell (2014) and newer",
-                ];
-                let intel_video_accel = Select::with_theme(&theme)
-                    .with_prompt("Select your Intel GPU generation")
-                    .default(0)
-                    .items(&items)
-                    .interact()
-                    .unwrap();
+            let line = format!("nvidia_stream_memory_operations=");
+            config_write(&nvidia_stream_memory_operations.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Configure Intel GPU video acceleration" => {
+            let items = vec![
+                "Intel GMA 4500 (2008) up to Coffee Lake's (2017) HD Graphics",
+                "Intel HD Graphics series starting from Broadwell (2014) and newer",
+            ];
+            let intel_video_accel = Select::with_theme(&theme)
+                .with_prompt("Select your Intel GPU generation")
+                .default(0)
+                .items(&items)
+                .interact()
+                .unwrap();
 
-                let line = format!("intel_video_accel=");
-                user_selection_write(&intel_video_accel.to_string(), &line)?;
-            }
-            "Disable all CPU mitigations" => {
-                let no_mitigations = Confirm::with_theme(&theme)
-                    .with_prompt("Disable all CPU mitigations?")
-                    .interact()
-                    .unwrap();
+            let line = format!("intel_video_accel=");
+            config_write(&intel_video_accel.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Disable all CPU mitigations" => {
+            let no_mitigations = Confirm::with_theme(&theme)
+                .with_prompt("Disable all CPU mitigations?")
+                .interact()
+                .unwrap();
 
-                let line = format!("no_mitigations=");
-                user_selection_write(&no_mitigations.to_string(), &line)?;
-            }
-            "Install Printer and Scanner support" => {
-                let printers_and_scanners = Confirm::with_theme(&theme)
-                    .with_prompt("Install printer and scanner drivers?")
-                    .interact()
-                    .unwrap();
+            let line = format!("no_mitigations=");
+            config_write(&no_mitigations.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Printer and Scanner support" => {
+            let printers_and_scanners = Confirm::with_theme(&theme)
+                .with_prompt("Install printer and scanner drivers?")
+                .interact()
+                .unwrap();
 
-                let line = format!("printers_and_scanners=");
-                user_selection_write(&printers_and_scanners.to_string(), &line)?;
-            }
-            "Install Wi-Fi and Bluetooth support" => {
-                let wifi_and_bluetooth = Confirm::with_theme(&theme)
-                    .with_prompt("Install Wi-Fi and Bluetooth drivers?")
-                    .interact()
-                    .unwrap();
+            let line = format!("printers_and_scanners=");
+            config_write(&printers_and_scanners.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Wi-Fi and Bluetooth support" => {
+            let wifi_and_bluetooth = Confirm::with_theme(&theme)
+                .with_prompt("Install Wi-Fi and Bluetooth drivers?")
+                .interact()
+                .unwrap();
 
-                let line = format!("hardware_wifi_and_bluetooth=");
-                user_selection_write(&wifi_and_bluetooth.to_string(), &line)?;
-            }
-            "Continue / Exit" => {
-                break Ok(());
-            }
-            _ => {
-                eprintln!("Invalid selection: {}", items[selection]);
-            }
+            let line = format!("hardware_wifi_and_bluetooth=");
+            config_write(&wifi_and_bluetooth.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Continue / Exit" => {
+            return Ok(());
+        }
+        _ => {
+            eprintln!("Invalid selection: {}", items[selection]);
         }
     }
+
+    user_configuration()
 }
 
 fn main() -> std::io::Result<()> {

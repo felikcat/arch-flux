@@ -2,8 +2,8 @@
 use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 use regex::Regex;
-use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::process::Command;
 
 pub fn prompt(description: &str) -> String {
@@ -165,24 +165,33 @@ pub fn create_sub_volumes(subvol_list: &[String]) -> io::Result<()> {
     Ok(())
 }
 
-// BUG: there will be duplicate lines due to the loop if someone picks two different choices for the same option
-pub fn user_selection_write(value: &str, line: &str) -> io::Result<()> {
-    let file_path = "/root/user_selections.cfg";
+pub fn config_write(value: &str, line: &str, file_path: &str) -> io::Result<()> {
     let file_content = fs::read_to_string(file_path)?;
-    
-    let formatted_entry = format!("{}{}", line, value);
 
-    // Check if the exact entry exists in the file by splitting into lines.
-    let exists = file_content.lines().any(|entry| entry == formatted_entry.trim());
+    let formatted_entry = format!("{}{}", line, value).trim().to_string();
 
-    if !exists {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(file_path)?;
-        
-        writeln!(file, "{}", formatted_entry.trim())?;
+    let mut lines: Vec<String> = file_content.lines().map(|s| s.to_string()).collect();
+    if let Some(index) = lines.iter().position(|entry| entry.starts_with(line)) {
+        lines[index] = formatted_entry;
+    } else if !formatted_entry.is_empty() {
+        lines.push(formatted_entry);
     }
 
+    let new_contents = lines.join("\n");
+    let final_contents = if new_contents.is_empty() {
+        new_contents
+    } else {
+        new_contents + "\n"
+    };
+
+    fs::write(file_path, final_contents)?;
+
     Ok(())
+}
+
+pub fn touch_file(path: &str) -> io::Result<()> {
+    match OpenOptions::new().create(true).write(true).open(path) {
+        Ok(_) => Ok(()),
+        Err(err) => Err(err),
+    }
 }
