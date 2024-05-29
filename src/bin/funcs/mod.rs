@@ -3,8 +3,8 @@ use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 use regex::Regex;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
-use std::process::Command;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::process::{Command, Output, Stdio};
 
 pub fn prompt(description: &str) -> String {
     print!("{description}");
@@ -28,23 +28,25 @@ pub fn prompt_u8(description: &str) -> Vec<u8> {
     reader.read_until(b'\n', &mut buffer).expect("Failed to read line");
 
     if let Some(&b'\n') = buffer.last() {
-        buffer.pop(); // Remove newline.
+        buffer.pop(); // Remove newline
         if buffer.last() == Some(&b'\r') {
-            buffer.pop(); // Remove carriage return.
+            buffer.pop(); // Remove carriage return
         }
     }
 
     buffer
 }
 
-pub fn run_shell_command(command: &str) -> io::Result<()> {
-    let output = Command::new("sh").arg("-c").arg(command).output()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    println!("{}", stdout);
+pub fn run_shell_command(command: &str) -> std::io::Result<Output> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .stdout(Stdio::piped()) // piped to not override the output.
+        .stderr(Stdio::inherit())
+        .output()?;
 
     if output.status.success() {
-        Ok(())
+        Ok(output)
     } else {
         eprintln!(
             "Error executing {}: {}",
@@ -53,16 +55,20 @@ pub fn run_shell_command(command: &str) -> io::Result<()> {
         );
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
-            "Command execution failed",
+            "Shell command execution failed",
         ))
     }
 }
 
-pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<()> {
-    let output = Command::new(command).args(args).output()?;
+pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Output> {
+    let output = Command::new(command)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .output()?;
 
     if output.status.success() {
-        Ok(())
+        Ok(output)
     } else {
         eprintln!(
             "Error executing {}: {}",
@@ -171,6 +177,7 @@ pub fn config_write(value: &str, line: &str, file_path: &str) -> io::Result<()> 
     let formatted_entry = format!("{}{}", line, value).trim().to_string();
 
     let mut lines: Vec<String> = file_content.lines().map(|s| s.to_string()).collect();
+
     if let Some(index) = lines.iter().position(|entry| entry.starts_with(line)) {
         lines[index] = formatted_entry;
     } else if !formatted_entry.is_empty() {
@@ -194,4 +201,18 @@ pub fn touch_file(path: &str) -> io::Result<()> {
         Ok(_) => Ok(()),
         Err(err) => Err(err),
     }
+}
+
+pub fn find_option(option: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let file_path = "/root/user_selections.cfg";
+    let file_contents = std::fs::read_to_string(file_path)?;
+    let re = regex::Regex::new(&format!(r"{}=(\w+)", option))?;
+    let layout = re
+        .captures(&file_contents)
+        .ok_or("Failed to find keyboard_layout")?
+        .get(1)
+        .ok_or("Failed to extract keyboard_layout")?
+        .as_str()
+        .to_string();
+    Ok(layout)
 }

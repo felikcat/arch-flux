@@ -1,8 +1,7 @@
 use dialoguer::theme::ColorfulTheme;
-use dialoguer::{Confirm, FuzzySelect, Input, MultiSelect, Select, Sort};
+use dialoguer::{Confirm, FuzzySelect, Input, Select};
 use funcs::{archiso_check, config_write, create_sub_volumes, fetch_disk, run_command, run_shell_command, touch_file};
-use std::io::Write;
-use std::fs::File;
+use regex::Regex;
 use std::{
     fs,
     process::{self, Command, Stdio},
@@ -168,11 +167,13 @@ fn user_configuration() -> std::io::Result<()> {
                 "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
                 "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
             ];
-            let keyboard_layout = FuzzySelect::with_theme(&theme)
+            let keyboard_layout_index = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select your keyboard layout: ")
                 .items(&items)
                 .interact()
                 .unwrap();
+
+            let keyboard_layout = &items[keyboard_layout_index];
 
             let line = format!("keyboard_layout=");
             config_write(&keyboard_layout.to_string(), &line, "/root/user_selections.cfg")?;
@@ -268,13 +269,27 @@ fn user_configuration() -> std::io::Result<()> {
     user_configuration()
 }
 
-fn main() -> std::io::Result<()> {
+fn pacman_mods() -> Result<(), Box<dyn std::error::Error>> {
+    let path = "/mnt/etc/pacman.conf";
+    let content = fs::read_to_string(path)?;
+
+    let color_regex = Regex::new(r"^#Color")?;
+    let content = color_regex.replace_all(&content, "Color");
+
+    let parallel_downloads_regex = Regex::new(r"^#ParallelDownloads")?;
+    let content = parallel_downloads_regex.replace_all(&content, "ParallelDownloads");
+
+    fs::write(path, content.as_ref())?;
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>>  {
     let disk = checks();
     let disk_str: &str = match disk {
         Ok(ref s) => s,
         Err(e) => {
             eprintln!("Failed to get 'disk' string: {}", e);
-            return Err(e);
+            return Err(Box::new(e));
         }
     };
 
@@ -285,7 +300,7 @@ fn main() -> std::io::Result<()> {
         Ok(_) => println!("NTP enabled successfully"),
         Err(e) => {
             eprintln!("Failed to enable NTP: {}", e);
-            return Err(e);
+            return Err(Box::new(e));
         }
     }
 
@@ -294,17 +309,22 @@ fn main() -> std::io::Result<()> {
         Ok(_) => println!("NTP service restarted"),
         Err(e) => {
             eprintln!("Failed to restart NTP service: {}", e);
-            return Err(e);
+            return Err(Box::new(e));
         }
     }
     if let Err(e) = create_and_mount_filesystems(disk_str) {
         eprintln!("create_and_mount_filesystems failed: {}", e);
-        return Err(e);
+        return Err(Box::new(e));
     }
 
+    // Account for Pacman suddenly exiting (due to the user sending SIGINT by pressing Ctrl + C).
     let _ = fs::remove_file("/mnt/var/lib/pacman/db.lck");
-    run_shell_command("pacstrap -K /mnt cryptsetup dosfstools btrfs-progs base base-devel git zsh grml-zsh-config --noconfirm --ask=4 --needed")?;
 
+    pacman_mods()?;
+
+    run_shell_command("pacstrap -K /mnt cryptsetup dosfstools btrfs-progs base base-devel git zsh grml-zsh-config reflector --noconfirm --ask=4 --needed")?;
+    run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
+    
     if cfg!(debug_assertions) {
         fs::copy(
             "/media/sf_arch-flux-c/target/debug/post_chroot",
@@ -315,6 +335,7 @@ fn main() -> std::io::Result<()> {
     }
 
     fs::copy("/root/selected_disk.cfg", "/mnt/root/selected_disk.cfg")?;
+    fs::copy("/root/user_selections.cfg", "/mnt/root/user_selections.cfg")?;
 
     run_shell_command("chmod +x /mnt/root/post_chroot")?;
     run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
