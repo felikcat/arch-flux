@@ -154,7 +154,6 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-// https://www.gnu.org/software/parted/api/modules.html
 fn create_partitions(device_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         // These need to be separate variables in order to do the math equation.

@@ -7,3 +7,6 @@ This project is entirely work in progress at the moment.
 . `source ~/.bashrc`
 . `sudo pacman -Syu`
 . `sudo pacman -S base-devel gdb clang cmake ninja mold util-linux-libs parted`
+
+== Unsorted
+If you forgot to set a password during the installation, use *CHANGEME* as the password; it's strongly recommended to change this with `sudo passwd`.

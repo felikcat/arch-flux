@@ -70,7 +70,8 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
     }
 
     run_command("mount", &["-t", "btrfs", &location, "/mnt"])?;
-
+    
+    // Must be ran after btrfs -> /mnt is mounted
     let base_path = "/mnt";
     // Has to be this specific order, otherwise it will fail in the for(subvol, dir) loop
     let directories = [
@@ -144,6 +145,7 @@ fn user_configuration() -> std::io::Result<()> {
     let items = vec![
         "Keyboard Layout",
         "Username",
+        "Password",
         "Hostname",
         "Select GPU type to install drivers for",
         "nvidia_stream_memory_operations",
@@ -187,6 +189,15 @@ fn user_configuration() -> std::io::Result<()> {
 
             let line = format!("username=");
             config_write(&username.to_string(), &line, "/root/user_selections.cfg")?;
+        }
+        "Password" => {
+            let password = Input::<String>::with_theme(&theme)
+                .with_prompt("\nEnter your username's password")
+                .interact()
+                .unwrap();
+
+            let line = format!("password=");
+            config_write(&password.to_string(), &line, "/root/user_selections.cfg")?;
         }
         "Hostname" => {
             let hostname = Input::<String>::with_theme(&theme)

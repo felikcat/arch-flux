@@ -205,3 +205,31 @@ pub fn find_option(option: &str) -> Result<String, Box<dyn std::error::Error>> {
         .to_string();
     Ok(layout)
 }
+
+pub fn replace_text (path: &str, old: &str, new: &str) -> io::Result<()> {
+    let file_content = fs::read_to_string(path)?;
+    let new_content = file_content.replace(old, new);
+    fs::write(path, new_content)?;
+    Ok(())
+}
+
+pub fn get_march() -> Result<String, String> {
+    let output = Command::new("gcc")
+        .args(&["-march=native", "-Q", "--help=target"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+
+    let re = Regex::new(r"-march=\s*([^\s]+)").map_err(|e| e.to_string())?;
+
+    if let Some(caps) = re.captures(&output_str) {
+        if let Some(march) = caps.get(1) {
+            Ok(march.as_str().trim().to_string())
+        } else {
+            Err("CPU architecture not found".to_string())
+        }
+    } else {
+        Err("Failed to match regex".to_string())
+    }
+}
