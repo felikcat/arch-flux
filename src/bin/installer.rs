@@ -87,6 +87,7 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         "sys",
         "dev",
         "run",
+        "etc",
     ];
 
     for dir in directories.iter() {
@@ -164,8 +165,8 @@ fn user_configuration() -> std::io::Result<()> {
     match items[selection] {
         "Keyboard Layout" => {
             let items = vec![
-                "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt",
-                "lv", "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
+                "by", "ca", "cf", "cz", "de", "dk", "es", "et", "fa", "fi", "fr", "gr", "hu", "il", "it", "lt", "lv",
+                "mk", "nl", "no", "pl", "ro", "ru", "sg", "ua", "uk", "us",
             ];
             let keyboard_layout_index = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select your keyboard layout: ")
@@ -214,7 +215,11 @@ fn user_configuration() -> std::io::Result<()> {
                 .unwrap();
 
             let line = format!("nvidia_stream_memory_operations=");
-            config_write(&nvidia_stream_memory_operations.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(
+                &nvidia_stream_memory_operations.to_string(),
+                &line,
+                "/root/user_selections.cfg",
+            )?;
         }
         "Configure Intel GPU video acceleration" => {
             let items = vec![
@@ -283,7 +288,7 @@ fn pacman_mods() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>>  {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let disk = checks();
     let disk_str: &str = match disk {
         Ok(ref s) => s,
@@ -320,11 +325,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>>  {
     // Account for Pacman suddenly exiting (due to the user sending SIGINT by pressing Ctrl + C).
     let _ = fs::remove_file("/mnt/var/lib/pacman/db.lck");
 
+    run_shell_command("pacstrap -K /mnt cryptsetup dosfstools btrfs-progs base base-devel git zsh grml-zsh-config reflector --noconfirm --ask=4 --needed")?;
+
     pacman_mods()?;
 
-    run_shell_command("pacstrap -K /mnt cryptsetup dosfstools btrfs-progs base base-devel git zsh grml-zsh-config reflector --noconfirm --ask=4 --needed")?;
+    let fstab_content = "# Static information about the filesystems.\n\
+                        # See fstab(5) for details.\n\
+                        \n\
+                        # <file system> <dir> <type> <options> <dump> <pass>\n";
+    fs::write("/mnt/etc/fstab", fstab_content)?;
     run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
-    
+
     if cfg!(debug_assertions) {
         fs::copy(
             "/media/sf_arch-flux-c/target/debug/post_chroot",

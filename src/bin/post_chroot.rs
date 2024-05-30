@@ -1,5 +1,5 @@
 use funcs::{find_option, run_command, run_shell_command, touch_file};
-use std::path::Path;
+use std::{fs::File, io::Write, path::Path};
 
 mod funcs;
 
@@ -38,13 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "systemd-firstboot",
         &[
             "--keymap",
-            &keyboard_layout.unwrap(),
+            &keyboard_layout.unwrap_or("us".to_string()),
             "--timezone",
             &tz,
             "--locale",
             "en_US.UTF-8",
             "--hostname",
-            &hostname.unwrap(),
+            &hostname.as_ref().unwrap_or(&"arch".to_string()),
             "--setup-machine-id",
             "--force",
         ],
@@ -53,6 +53,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Failed to execute systemd-firstboot command");
         std::process::exit(1);
     });
+
+    run_command("hwclock", &["--systohc"])?;
+
+    let contents = format!(
+        "# Static table lookup for hostnames.\n\
+        # See hosts(5) for details.\n\n\
+        127.0.0.1        localhost\n\
+        ::1              ip6-localhost\n\
+        127.0.1.1        {}\n",
+        hostname.unwrap()
+    );
+    let mut file = File::create("/etc/hosts")?;
+    file.write_all(contents.as_bytes())?;
 
     Ok(())
 }

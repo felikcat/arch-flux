@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use libparted_sys::{_PedDevice, _PedDisk, ped_device_destroy, ped_disk_destroy};
 use nix::libc;
 use regex::Regex;
 use std::fs::{self, File, OpenOptions};
@@ -45,19 +44,20 @@ pub fn run_shell_command(command: &str) -> std::io::Result<Output> {
         .stderr(Stdio::inherit())
         .output()?;
 
-    if output.status.success() {
-        Ok(output)
-    } else {
-        eprintln!(
-            "Error executing {}: {}",
-            command,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Shell command execution failed",
-        ))
-    }
+        if output.status.success() {
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+            Ok(output)
+        } else {
+            eprintln!(
+                "Error executing {}: {}",
+                command,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Shell command execution failed",
+            ))
+        }
 }
 
 pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Output> {
@@ -68,6 +68,7 @@ pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Output> {
         .output()?;
 
     if output.status.success() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
         Ok(output)
     } else {
         eprintln!(
@@ -91,18 +92,6 @@ pub fn umount(target: &str, flags: libc::c_int) -> Result<(), String> {
     } else {
         Err(format!("Failed to unmount: {}", std::io::Error::last_os_error()))
     }
-}
-
-pub fn mib_to_sectors(mib: i64, sector_size: i64) -> i64 {
-    let bytes_per_mib: i64 = 1_048_576; // 1024 * 1024
-    (mib * bytes_per_mib) / sector_size
-}
-
-pub unsafe fn parted_cleanup(disk: *mut _PedDisk, device: *mut _PedDevice) {
-    ped_disk_destroy(disk);
-    ped_device_destroy(device);
-    println!("parted_cleanup was called, exiting...");
-    std::process::exit(1);
 }
 
 pub fn archiso_check() -> io::Result<()> {
@@ -209,9 +198,9 @@ pub fn find_option(option: &str) -> Result<String, Box<dyn std::error::Error>> {
     let re = regex::Regex::new(&format!(r"{}=(\w+)", option))?;
     let layout = re
         .captures(&file_contents)
-        .ok_or("Failed to find keyboard_layout")?
+        .ok_or(format!("Failed to find {}", option))?
         .get(1)
-        .ok_or("Failed to extract keyboard_layout")?
+        .ok_or(format!("Failed to extract {}", option))?
         .as_str()
         .to_string();
     Ok(layout)
