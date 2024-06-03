@@ -133,7 +133,7 @@ pub fn fetch_disk() -> io::Result<String> {
     } else {
         let input = contents.replace("\n", ""); // Incase someone uses Vim to manually input the disk.
 
-        let ssd = Regex::new(r"/dev/sd[a-z]").unwrap().find(&input);
+        let ssd = Regex::new(r"/dev/[s,v]d[a-z]").unwrap().find(&input);
         let nvme = Regex::new(r"/dev/(nvme|mmc)([0-9])n1").unwrap().find(&input);
 
         let input = if let Some(ssd) = ssd {

@@ -78,10 +78,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Safe to do; if say /home/admin existed, it wouldn't also remove /home/admin.
     _ = run_command("userdel", &[&username]);
 
-    format!(
+    let add_user = format!(
         "useradd -m -G users,wheel,video,gamemode -s /bin/zsh {}",
         &username
     );
+    run_shell_command(&add_user)?;
+
     run_shell_command(&format!(
         "echo {}:{} | chpasswd",
         &username,

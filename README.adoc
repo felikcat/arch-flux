@@ -6,7 +6,7 @@ This project is entirely work in progress at the moment.
 . `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 . `source ~/.bashrc`
 . `sudo pacman -Syu`
-. `sudo pacman -S base-devel gdb clang cmake ninja mold util-linux-libs parted`
+. `sudo pacman -S base-devel gdb clang ninja mold`
 
 == Unsorted
 If you forgot to set a password during the installation, use *CHANGEME* as the password; it's strongly recommended to change this with `sudo passwd`.

@@ -37,11 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     disk_editing(&mut selected_disk)?;
 
     let file_path = "/root/selected_disk.cfg";
-
-    if let Err(e) = remove_file(file_path) {
-        eprintln!("Failed to delete disk configuration file, this is OK: {}", e);
-    }
-
+    remove_file(file_path).ok();
+    
     let mut config = File::create(file_path)?;
     let sd_with_newline = format!("{}\n", selected_disk);
     config.write_all(sd_with_newline.as_bytes())?;
@@ -80,7 +77,7 @@ fn disk_selection(selected_disk: &mut String) {
 
     let input = prompt("\nExample disks: /dev/sda, /dev/nvme0n1.\nInput your desired disk, then press ENTER: ");
 
-    let ssd = Regex::new(r"/dev/sd[a-z]").unwrap().find(&input);
+    let ssd = Regex::new(r"/dev/[s,v]d[a-z]").unwrap().find(&input);
     let nvme = Regex::new(r"/dev/(nvme|mmc)([0-9])n1").unwrap().find(&input);
 
     match (ssd, nvme) {
