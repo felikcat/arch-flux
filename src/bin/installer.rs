@@ -1,6 +1,6 @@
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, FuzzySelect, Input, Select};
-use funcs::{archiso_check, config_write, create_sub_volumes, fetch_disk, run_command, run_shell_command, touch_file};
+use funcs::{archiso_check, config_write, create_sub_volumes, fetch_disk, run_command, run_shell_command};
 use regex::Regex;
 use std::{
     fs,
@@ -127,8 +127,19 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
 }
 
 fn user_configuration() -> std::io::Result<()> {
-    touch_file("/root/user_selections.cfg")?;
-
+    if !std::path::Path::new("/root/user_selections.cfg").exists() {
+        let contents = "keyboard_layout=us
+username=admin
+password=CHANGEME
+hostname=arch
+gpu_selected=1
+nvidia_stream_memory_operations=false
+intel_video_accel=0
+no_mitigations=false
+printers_and_scanners=true
+hardware_wifi_and_bluetooth=true\n";
+        std::fs::write("/root/user_selections.cfg", contents)?;
+    }
     let items = vec![
         "Keyboard Layout",
         "Username",
@@ -334,11 +345,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write("/mnt/etc/fstab", fstab_content)?;
     run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
 
+    fs::copy("/root/user_selections.cfg", "/mnt/root/user_selections.cfg")?;
+    fs::copy("/root/selected_disk.cfg", "/mnt/root/selected_disk.cfg")?;
+
     if cfg!(debug_assertions) {
-        fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
-        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/target/debug/post_chroot'")?;
+        let _ = fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new());
+        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/sf_arch-flux/target/debug/post_chroot'")?;
     } else {
-        fs_extra::dir::copy("/root", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
+        let _ = fs_extra::dir::copy("/root", "/mnt/root", &fs_extra::dir::CopyOptions::new());
         run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
     }
 

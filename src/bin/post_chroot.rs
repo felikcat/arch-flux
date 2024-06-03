@@ -33,28 +33,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tz_output = run_command("curl", &["-s", "http://ip-api.com/line?fields=timezone"])?;
     let tz = String::from_utf8_lossy(&tz_output.stdout).trim().to_string();
 
-    let keyboard_layout = find_option("keyboard_layout");
-    let hostname = find_option("hostname");
-    let username = find_option("username");
-    let password = find_option("password");
-    let printers_and_scanners = find_option("printers_and_scanners");
-    let wifi_and_bluetooth = find_option("wifi_and_bluetooth");
-
-    println!("Timezone is {}", tz);
-    println!("Setting keyboard layout to {:?}", keyboard_layout);
-    println!("Setting hostname to {:?}", hostname);
+    let keyboard_layout = find_option("keyboard_layout")?;
+    let hostname = find_option("hostname")?;
+    let username = find_option("username")?;
+    let password = find_option("password")?;
+    let printers_and_scanners = find_option("printers_and_scanners")?;
+    let wifi_and_bluetooth = find_option("wifi_and_bluetooth")?;
 
     run_command(
         "systemd-firstboot",
         &[
             "--keymap",
-            &keyboard_layout.unwrap_or("us".to_string()),
+            &keyboard_layout,
             "--timezone",
             &tz,
             "--locale",
             "en_US.UTF-8",
             "--hostname",
-            &hostname.as_ref().unwrap_or(&"arch".to_string()),
+            &hostname,
             "--setup-machine-id",
             "--force",
         ],
@@ -72,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         127.0.0.1        localhost\n\
         ::1              ip6-localhost\n\
         127.0.1.1        {}\n",
-        hostname.unwrap()
+        &hostname,
     );
     let mut file = File::create("/etc/hosts")?;
     file.write_all(contents.as_bytes())?;
@@ -80,16 +76,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run_shell_command("groupadd --force -g 385 gamemode")?;
 
     // Safe to do; if say /home/admin existed, it wouldn't also remove /home/admin.
-    _ = run_command("userdel", &[&username.as_ref().unwrap()]);
+    _ = run_command("userdel", &[&username]);
 
-    run_shell_command(&format!(
+    format!(
         "useradd -m -G users,wheel,video,gamemode -s /bin/zsh {}",
-        &username.as_ref().unwrap()
-    ))?;
+        &username
+    );
     run_shell_command(&format!(
         "echo {}:{} | chpasswd",
-        &username.as_ref().unwrap(),
-        &password.unwrap_or("CHANGEME".to_string())
+        &username,
+        &password
     ))?;
 
     // Remove "password" from the config file
@@ -106,8 +102,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::write("/etc/sudoers.d/99-installer", b"%wheel ALL=(ALL) NOPASSWD: ALL\n")?;
 
-    let fontconfig_dir = format!("/home/{}/.config/fontconfig/conf.d", &username.as_ref().unwrap());
-    let systemd_user_dir = format!("/home/{}/.config/systemd/user", &username.as_ref().unwrap());
+    let fontconfig_dir = format!("/home/{}/.config/fontconfig/conf.d", &username);
+    let systemd_user_dir = format!("/home/{}/.config/systemd/user", &username);
     let directories = vec![
         "/boot",
         "/etc/conf.d",
@@ -138,9 +134,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = "/etc/makepkg.conf";
     let content = fs::read_to_string(path)?;
 
-    let march = get_march().unwrap_or("generic".to_string());
+    let march = get_march().unwrap_or("native".to_string());
 
-    println!("optimizing for CPU: {}", march);
+    println!("Optimizing for CPU: {}", march);
 
     // march: Optimize for current CPU generation.
     // RUSTFLAGS: Same reason as the above.
@@ -196,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut packages = Vec::new();
 
-    if printers_and_scanners.unwrap() == "true".to_string() {
+    if printers_and_scanners == "true".to_string() {
         let pac_packages = vec![
             "cups",
             "cups-filters",
@@ -210,7 +206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         packages.extend(pac_packages);
     }
 
-    if wifi_and_bluetooth.unwrap() == "true".to_string() {
+    if wifi_and_bluetooth == "true".to_string() {
         let wb_packages = vec!["iwd", "bluez", "bluez-utils"];
         packages.extend(wb_packages);
     }
@@ -220,6 +216,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for package in packages {
         run_command("pacman", &["-S", "--noconfirm", "--ask=4", package])?;
     }
+
+    println!("Post-chroot setup complete!");
 
     Ok(())
 }
