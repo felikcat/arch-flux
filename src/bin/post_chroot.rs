@@ -37,6 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hostname = find_option("hostname");
     let username = find_option("username");
     let password = find_option("password");
+    let printers_and_scanners = find_option("printers_and_scanners");
+    let wifi_and_bluetooth = find_option("wifi_and_bluetooth");
 
     println!("Timezone is {}", tz);
     println!("Setting keyboard layout to {:?}", keyboard_layout);
@@ -191,6 +193,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let multilib_regex = Regex::new(r"(?s)(\[multilib\].*?)#(Include.*)").unwrap();
     let modified_contents = multilib_regex.replace(&contents, "$1$2");
     fs::write(path, modified_contents.as_bytes())?;
+
+    let mut packages = Vec::new();
+
+    if printers_and_scanners.unwrap() == "true".to_string() {
+        let pac_packages = vec![
+            "cups",
+            "cups-filters",
+            "ghostscript",
+            "gsfonts",
+            "cups-pk-helper",
+            "sane",
+            "system-config-printer",
+            "simple-scan",
+        ];
+        packages.extend(pac_packages);
+    }
+
+    if wifi_and_bluetooth.unwrap() == "true".to_string() {
+        let wb_packages = vec!["iwd", "bluez", "bluez-utils"];
+        packages.extend(wb_packages);
+    }
+
+    fs::copy("/root/files/etc/X11/Xwrapper.config", "/etc/X11/XWrapper.config")?;
+
+    for package in packages {
+        run_command("pacman", &["-S", "--noconfirm", "--ask=4", package])?;
+    }
 
     Ok(())
 }

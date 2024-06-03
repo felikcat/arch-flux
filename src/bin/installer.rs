@@ -53,10 +53,6 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         .collect();
     let subvol_mount_list: Vec<String> = "root btrfs srv pkg log home".split(' ').map(String::from).collect();
 
-    let btrfs_options = "noatime,compress=zstd:1";
-
-    let _ = run_command("umount", &["-flRq", "/mnt"]);
-
     // Check if there's already a Btrfs file system
     if !Command::new("lsblk")
         .args(&["-o", "FSTYPE", &location])
@@ -66,11 +62,22 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         .any(|window| window == b"btrfs")
     {
         run_command("mkfs.btrfs", &[&location])?;
-        run_command("mkfs.fat -F 32", &[&boot_part])?;
+        run_command("mkfs.fat", &["-F", "32", &boot_part])?;
+    }
+    let opts = format!("defaults,noatime,compress=zstd:1");
+
+    let _ = fs::create_dir("/mnt");
+    let _ = run_command("umount", &["-flR", "/mnt"]);
+
+    fs::remove_dir_all("/mnt")?;
+    fs::create_dir("/mnt")?;
+
+    let root_mount = format!("mount -t btrfs -o {} {} /mnt", &opts, &location);
+    if let Err(e) = run_shell_command(&root_mount) {
+        eprintln!("Failed to mount root: {}", e);
+        process::exit(1);
     }
 
-    run_command("mount", &["-t", "btrfs", &location, "/mnt"])?;
-    
     // Must be ran after btrfs -> /mnt is mounted
     let base_path = "/mnt";
     // Has to be this specific order, otherwise it will fail in the for(subvol, dir) loop
@@ -81,8 +88,8 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         "var/cache/pacman/pkg",
         "var/log",
         "home",
-        "tmp",
         // The following below might not be required after running pacstrap
+        "tmp",
         "boot",
         "proc",
         "sys",
@@ -99,41 +106,21 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
         }
     }
 
-    run_command(
-        "mount",
-        &["-t", "vfat", "-o", "nodev,nosuid,noexec", &boot_part, "/mnt/boot"],
-    )?;
-
     create_sub_volumes(&subvol_list)?;
 
-    run_command(
-        "mount",
-        &[
-            "-t",
-            "btrfs",
-            "-o",
-            &format!("{}{}", btrfs_options, ",subvolid=5"),
-            &location,
-            "/mnt/btrfs",
-        ],
-    )?;
+    let boot_mount = format!("-t vfat -o nodev,nosuid,noexec {} /mnt/boot", &boot_part);
+    run_command("mount", &[&boot_mount])?;
+    println!("Mounted boot partition");
+
+    let btrfs_mount = format!("-t btrfs -o {},subvolid=5 {} /mnt/btrfs", &location, &opts);
+    run_command("mount", &[&btrfs_mount])?;
+    println!("Mounted btrfs subvolume");
 
     for (subvol, dir) in subvol_mount_list.iter().zip(directories.iter()) {
         let full_path = format!("{}/{}", base_path, dir);
-        match run_command(
-            "mount",
-            &[
-                "-t",
-                "btrfs",
-                "-o",
-                &format!("{}{}", btrfs_options, &format!(",subvol=@{}", subvol)),
-                &location,
-                &full_path,
-            ],
-        ) {
-            Ok(_) => println!("Mounted subvolume '{}' at '{}'", subvol, full_path),
-            Err(e) => println!("Failed to mount subvolume '{}' at '{}': {}", subvol, full_path, e),
-        }
+        let subvol_mount = format!("-t btrfs -o {} subvol=@{} {} {}", &opts, &subvol, &location, &full_path);
+        run_command("mount", &[&subvol_mount])?;
+        println!("Mounted subvolume: {}", subvol);
     }
 
     Ok(())
@@ -348,19 +335,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
 
     if cfg!(debug_assertions) {
-        fs::copy(
-            "/media/sf_arch-flux-c/target/debug/post_chroot",
-            "/mnt/root/post_chroot",
-        )?;
+        fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
+        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/target/debug/post_chroot'")?;
     } else {
-        fs::copy("/root/post_chroot", "/mnt/root/post_chroot")?;
+        fs_extra::dir::copy("/root", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
+        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
     }
-
-    fs::copy("/root/selected_disk.cfg", "/mnt/root/selected_disk.cfg")?;
-    fs::copy("/root/user_selections.cfg", "/mnt/root/user_selections.cfg")?;
-
-    run_shell_command("chmod +x /mnt/root/post_chroot")?;
-    run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
 
     Ok(())
 }
