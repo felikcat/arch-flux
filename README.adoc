@@ -8,5 +8,12 @@ This project is entirely work in progress at the moment.
 . `sudo pacman -Syu`
 . `sudo pacman -S base-devel gdb clang ninja mold`
 
+== Usage
+
+. Run `disk_format`
+. Run `bootstrap`
+. The chroot has to manually be entered into before running `post_chroot`; running `post_chroot` via arch-chroot causes severe problems: `arch-chroot /mnt /bin/zsh`
+. Run `post_chroot`
+
 == Unsorted
 If you forgot to set a password during the installation, use *CHANGEME* as the password; it's strongly recommended to change this with `sudo passwd`.

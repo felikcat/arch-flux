@@ -1,3 +1,4 @@
+use anyhow::Context;
 use funcs::{find_option, get_march, replace_text, run_command, run_shell_command, touch_file};
 use regex::Regex;
 use std::{
@@ -9,36 +10,39 @@ use std::{
 
 mod funcs;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Test the 15 most reliable mirrors, given their last full sync is at max 30 minutes delayed.
-    if !Path::new("/root/skip_reflector").exists() {
+fn main() -> anyhow::Result<()> {
+    println!("Starting post-chroot setup...");
+    // Test the 10 most reliable mirrors, given their last full sync is at max 30 minutes delayed.
+    if !Path::new("/tmp/skip_reflector").exists() {
         run_shell_command(
-            "reflector --verbose -p https --delay 0.5 --score 15 --fastest 6 --save /etc/pacman.d/mirrorlist",
-        )?;
-        touch_file("/root/skip_reflector")?;
+            "reflector --verbose -p https --delay 0.5 --score 1 --fastest 6 --save /etc/pacman.d/mirrorlist",
+        )
+        .with_context(|| "Failed to update pacman mirrorlist")?;
+
+        touch_file("/tmp/skip_reflector")?;
     }
 
     // Incase the keyring expired after installer.rs was run
-    run_command("pacman", &["-Sy", "--noconfirm", "--ask=4", "archlinux-keyring"])?;
-
-    run_command("pacman", &["-Su", "--noconfirm", "--ask=4"])?;
+    run_command("pacman", &["-Sy", "--noconfirm", "--ask=4", "archlinux-keyring"])
+        .with_context(|| "Failed to update keyring")?;
+    run_command("pacman", &["-Su", "--noconfirm", "--ask=4"]).with_context(|| "Failed to update the system")?;
 
     let file_path = "/etc/locale.gen";
-    let file_contents = std::fs::read_to_string(file_path)?;
+    let file_contents = std::fs::read_to_string(file_path).with_context(|| "Failed to read /etc/locale.gen")?;
     let modified_file_contents = file_contents.replace("#en_US.UTF-8 UTF-8", "en_US.UTF-8 UTF-8");
     std::fs::write(file_path, modified_file_contents.as_bytes())?;
 
     run_command("locale-gen", &[""])?;
 
-    let tz_output = run_command("curl", &["-s", "http://ip-api.com/line?fields=timezone"])?;
+    let tz_output = run_command("curl", &["-s", "http://ip-api.com/line?fields=timezone"]).with_context(|| "Failed to retrieve timezone from ip-api.com")?;
     let tz = String::from_utf8_lossy(&tz_output.stdout).trim().to_string();
 
-    let keyboard_layout = find_option("keyboard_layout")?;
-    let hostname = find_option("hostname")?;
-    let username = find_option("username")?;
-    let password = find_option("password")?;
-    let printers_and_scanners = find_option("printers_and_scanners")?;
-    let wifi_and_bluetooth = find_option("wifi_and_bluetooth")?;
+    let keyboard_layout = find_option("keyboard_layout").unwrap();
+    let hostname = find_option("hostname").unwrap();
+    let username = find_option("username").unwrap();
+    let password = find_option("password").unwrap();
+    let printers_and_scanners = find_option("printers_and_scanners").unwrap();
+    let wifi_and_bluetooth = find_option("wifi_and_bluetooth").unwrap();
 
     run_command(
         "systemd-firstboot",
@@ -78,17 +82,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Safe to do; if say /home/admin existed, it wouldn't also remove /home/admin.
     _ = run_command("userdel", &[&username]);
 
-    let add_user = format!(
-        "useradd -m -G users,wheel,video,gamemode -s /bin/zsh {}",
-        &username
-    );
-    run_shell_command(&add_user)?;
+    let add_user = format!("useradd -m -G users,wheel,video,gamemode -s /bin/zsh {}", &username);
+    run_shell_command(&add_user).with_context(|| format!("Failed to create user: {}", &username))?;
 
-    run_shell_command(&format!(
-        "echo {}:{} | chpasswd",
-        &username,
-        &password
-    ))?;
+    run_shell_command(&format!("echo {}:{} | chpasswd", &username, &password))?;
 
     // Remove "password" from the config file
     let file_content = read_to_string("/root/user_selections.cfg")?;

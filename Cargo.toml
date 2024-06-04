@@ -10,3 +10,4 @@ dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
 libcryptsetup-rs = "0.9.3"
 libcryptsetup-rs-sys = "0.4.0"
 fs_extra = "1.3.0"
+anyhow = "1.0.86"

@@ -345,15 +345,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write("/mnt/etc/fstab", fstab_content)?;
     run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
 
-    fs::copy("/root/user_selections.cfg", "/mnt/root/user_selections.cfg")?;
-    fs::copy("/root/selected_disk.cfg", "/mnt/root/selected_disk.cfg")?;
+    fs_extra::dir::remove("/mnt/root")?;
+    fs::create_dir("/mnt/root")?;
 
     if cfg!(debug_assertions) {
-        let _ = fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new());
-        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/sf_arch-flux/target/debug/post_chroot'")?;
+        fs_extra::dir::copy("/root", "/mnt", &fs_extra::dir::CopyOptions::new())?;
+        fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
     } else {
-        let _ = fs_extra::dir::copy("/root", "/mnt/root", &fs_extra::dir::CopyOptions::new());
-        run_shell_command("arch-chroot /mnt /bin/bash -c '/root/post_chroot'")?;
+        fs_extra::dir::copy("/root", "/mnt", &fs_extra::dir::CopyOptions::new())?;
     }
 
     Ok(())
