@@ -11,7 +11,6 @@ use std::{
 mod funcs;
 
 fn main() -> anyhow::Result<()> {
-    println!("Starting post-chroot setup...");
     // Test the 10 most reliable mirrors, given their last full sync is at max 30 minutes delayed.
     if !Path::new("/tmp/skip_reflector").exists() {
         run_shell_command(
@@ -204,9 +203,9 @@ fn main() -> anyhow::Result<()> {
 
     fs::copy("/root/arch-flux/files/etc/X11/Xwrapper.config", "/etc/X11/XWrapper.config").with_context(|| "Failed to copy Xwrapper.config")?;
 
-    for package in packages {
-        run_command("pacman", &["-S", "--noconfirm", "--ask=4", package])?;
-    }
+    let package_list = packages.join(" ");
+    let pacman_install = format!("pacman -S --noconfirm --ask=4 {}", &package_list);
+    run_shell_command(&pacman_install)?;
 
     println!("Post-chroot setup complete!");
 

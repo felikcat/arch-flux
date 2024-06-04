@@ -1,6 +1,8 @@
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, FuzzySelect, Input, Select};
-use funcs::{archiso_check, config_write, copy_recursively, create_sub_volumes, fetch_disk, run_command, run_shell_command};
+use funcs::{
+    archiso_check, config_write, copy_recursively, create_sub_volumes, fetch_disk, run_command, run_shell_command,
+};
 use regex::Regex;
 use std::path::Path;
 use std::{
@@ -178,7 +180,11 @@ hardware_wifi_and_bluetooth=true\n";
             let keyboard_layout = &items[keyboard_layout_index];
 
             let line = format!("keyboard_layout=");
-            config_write(&keyboard_layout.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
+            config_write(
+                &keyboard_layout.to_string(),
+                &line,
+                "/root/arch-flux/user_selections.cfg",
+            )?;
         }
         "Username" => {
             let username = Input::<String>::with_theme(&theme)
@@ -244,7 +250,11 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("intel_video_accel=");
-            config_write(&intel_video_accel.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
+            config_write(
+                &intel_video_accel.to_string(),
+                &line,
+                "/root/arch-flux/user_selections.cfg",
+            )?;
         }
         "Disable all CPU mitigations" => {
             let no_mitigations = Confirm::with_theme(&theme)
@@ -253,7 +263,11 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("no_mitigations=");
-            config_write(&no_mitigations.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
+            config_write(
+                &no_mitigations.to_string(),
+                &line,
+                "/root/arch-flux/user_selections.cfg",
+            )?;
         }
         "Printer and Scanner support" => {
             let printers_and_scanners = Confirm::with_theme(&theme)
@@ -262,7 +276,11 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("printers_and_scanners=");
-            config_write(&printers_and_scanners.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
+            config_write(
+                &printers_and_scanners.to_string(),
+                &line,
+                "/root/arch-flux/user_selections.cfg",
+            )?;
         }
         "Wi-Fi and Bluetooth support" => {
             let wifi_and_bluetooth = Confirm::with_theme(&theme)
@@ -271,7 +289,11 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("hardware_wifi_and_bluetooth=");
-            config_write(&wifi_and_bluetooth.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
+            config_write(
+                &wifi_and_bluetooth.to_string(),
+                &line,
+                "/root/arch-flux/user_selections.cfg",
+            )?;
         }
         "Continue / Exit" => {
             return Ok(());
@@ -350,16 +372,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir("/mnt/root/arch-flux")?;
 
     if cfg!(debug_assertions) {
-        fs_extra::dir::copy("/root/arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;        
+        fs_extra::dir::copy("/root/arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
         match copy_recursively(Path::new("/media/sf_arch-flux"), Path::new("/mnt/root/arch-flux")) {
             Ok(_) => println!("Copied sf_arch-flux's files to /mnt/root/arch-flux successfully"),
             Err(e) => eprintln!("Failed to copy sf_arch-flux's files: {}", e),
         }
+
+        run_shell_command("arch-chroot /mnt /root/arch-flux/target/debug/post_chroot")?;
     } else {
         match copy_recursively(Path::new("/root/arch-flux"), Path::new("/mnt/root/arch-flux")) {
             Ok(_) => println!("Copied Arch Flux's files to /mnt/root/arch-flux successfully"),
             Err(e) => eprintln!("Failed to copy Arch Flux's files: {}", e),
-        }    }
+        }
+        run_shell_command("arch-chroot /mnt /bin/zsh -c /root/arch-flux/post_chroot")?;
+    }
 
     Ok(())
 }
