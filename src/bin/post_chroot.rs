@@ -2,7 +2,7 @@ use anyhow::Context;
 use funcs::{find_option, get_march, replace_text, run_command, run_shell_command, touch_file};
 use regex::Regex;
 use std::{
-    fs::{self, read_to_string, File},
+    fs::{self, File},
     io::Write,
     path::Path,
     thread,
@@ -87,17 +87,8 @@ fn main() -> anyhow::Result<()> {
 
     run_shell_command(&format!("echo {}:{} | chpasswd", &username, &password))?;
 
-    // Remove "password" from the config file
-    let file_content = read_to_string("/root/user_selections.cfg")?;
-    let filtered_content: Vec<String> = file_content
-        .lines()
-        .filter(|line| !line.contains("password"))
-        .map(|line| line.to_string())
-        .collect();
-    fs::write("/root/user_selections.cfg", filtered_content.join("\n"))?;
-
-    replace_text("/etc/audit/auditd.conf", "log_group = root", "log_group = wheel")?;
-    replace_text("/etc/sudoers", "# %wheel ALL=(ALL) ALL", "%wheel ALL=(ALL) ALL")?;
+    replace_text("/etc/audit/auditd.conf", "log_group = root", "log_group = wheel").with_context(|| "Cannot find /etc/audit/auditd.conf")?;
+    replace_text("/etc/sudoers", "# %wheel ALL=(ALL) ALL", "%wheel ALL=(ALL) ALL").with_context(|| "Cannot find /etc/sudoers")?;
 
     fs::write("/etc/sudoers.d/99-installer", b"%wheel ALL=(ALL) NOPASSWD: ALL\n")?;
 
@@ -130,8 +121,8 @@ fn main() -> anyhow::Result<()> {
 
     let num_cpus = thread::available_parallelism().unwrap().get();
 
-    let path = "/etc/makepkg.conf";
-    let content = fs::read_to_string(path)?;
+    let makepkg_path = "/etc/makepkg.conf";
+    let content = fs::read_to_string(makepkg_path)?;
 
     let march = get_march().unwrap_or("native".to_string());
 
@@ -166,10 +157,10 @@ fn main() -> anyhow::Result<()> {
         let re = Regex::new(pattern).unwrap();
         modified_content = re.replace_all(&modified_content, *replacement).to_string();
     }
-    fs::write(path, modified_content)?;
+    fs::write(makepkg_path, modified_content)?;
 
     // Set the MAKEFLAGS and GNUMAKEFLAGS environment variables to use all available CPU cores
-    let files = vec!["/etc/systemd/system.conf", "/etc/systemd/user.conf"];
+    let systemd_files = vec!["/etc/systemd/system.conf", "/etc/systemd/user.conf"];
 
     let re = Regex::new(r"(.DefaultEnvironment.*)").unwrap();
     let replacement = format!(
@@ -177,17 +168,18 @@ fn main() -> anyhow::Result<()> {
         num_cpus, num_cpus, num_cpus, num_cpus
     );
 
-    for file_path in files {
+    for file_path in systemd_files {
         let contents = fs::read_to_string(file_path)?;
         let new_contents = re.replace(&contents, replacement.as_str());
         let mut file = fs::OpenOptions::new().write(true).truncate(true).open(file_path)?;
         file.write_all(new_contents.as_bytes())?;
     }
 
-    let contents = fs::read_to_string("/etc/pacman.conf")?;
+    let pacman_path = "/etc/pacman.conf";
+    let contents = fs::read_to_string(pacman_path).with_context(|| "Failed to read /etc/pacman.conf")?;
     let multilib_regex = Regex::new(r"(?s)(\[multilib\].*?)#(Include.*)").unwrap();
     let modified_contents = multilib_regex.replace(&contents, "$1$2");
-    fs::write(path, modified_contents.as_bytes())?;
+    fs::write(pacman_path, modified_contents.as_bytes())?;
 
     let mut packages = Vec::new();
 
@@ -210,7 +202,7 @@ fn main() -> anyhow::Result<()> {
         packages.extend(wb_packages);
     }
 
-    fs::copy("/root/files/etc/X11/Xwrapper.config", "/etc/X11/XWrapper.config")?;
+    fs::copy("/root/arch-flux/files/etc/X11/Xwrapper.config", "/etc/X11/XWrapper.config").with_context(|| "Failed to copy Xwrapper.config")?;
 
     for package in packages {
         run_command("pacman", &["-S", "--noconfirm", "--ask=4", package])?;

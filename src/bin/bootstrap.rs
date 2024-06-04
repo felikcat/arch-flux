@@ -1,7 +1,8 @@
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, FuzzySelect, Input, Select};
-use funcs::{archiso_check, config_write, create_sub_volumes, fetch_disk, run_command, run_shell_command};
+use funcs::{archiso_check, config_write, copy_recursively, create_sub_volumes, fetch_disk, run_command, run_shell_command};
 use regex::Regex;
+use std::path::Path;
 use std::{
     fs,
     process::{self, Command, Stdio},
@@ -127,7 +128,7 @@ fn create_and_mount_filesystems(disk: &str) -> std::io::Result<()> {
 }
 
 fn user_configuration() -> std::io::Result<()> {
-    if !std::path::Path::new("/root/user_selections.cfg").exists() {
+    if !std::path::Path::new("/root/arch-flux/user_selections.cfg").exists() {
         let contents = "keyboard_layout=us
 username=admin
 password=CHANGEME
@@ -138,7 +139,7 @@ intel_video_accel=0
 no_mitigations=false
 printers_and_scanners=true
 hardware_wifi_and_bluetooth=true\n";
-        std::fs::write("/root/user_selections.cfg", contents)?;
+        std::fs::write("/root/arch-flux/user_selections.cfg", contents)?;
     }
     let items = vec![
         "Keyboard Layout",
@@ -177,7 +178,7 @@ hardware_wifi_and_bluetooth=true\n";
             let keyboard_layout = &items[keyboard_layout_index];
 
             let line = format!("keyboard_layout=");
-            config_write(&keyboard_layout.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&keyboard_layout.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Username" => {
             let username = Input::<String>::with_theme(&theme)
@@ -186,7 +187,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("username=");
-            config_write(&username.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&username.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Password" => {
             let password = Input::<String>::with_theme(&theme)
@@ -195,7 +196,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("password=");
-            config_write(&password.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&password.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Hostname" => {
             let hostname = Input::<String>::with_theme(&theme)
@@ -204,7 +205,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("hostname=");
-            config_write(&hostname.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&hostname.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Select GPU type to install drivers for" => {
             let gpu_selected = Select::with_theme(&theme)
@@ -215,7 +216,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("gpu_selected=");
-            config_write(&gpu_selected.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&gpu_selected.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "nvidia_stream_memory_operations" => {
             let nvidia_stream_memory_operations = Confirm::with_theme(&theme)
@@ -227,7 +228,7 @@ hardware_wifi_and_bluetooth=true\n";
             config_write(
                 &nvidia_stream_memory_operations.to_string(),
                 &line,
-                "/root/user_selections.cfg",
+                "/root/arch-flux/user_selections.cfg",
             )?;
         }
         "Configure Intel GPU video acceleration" => {
@@ -243,7 +244,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("intel_video_accel=");
-            config_write(&intel_video_accel.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&intel_video_accel.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Disable all CPU mitigations" => {
             let no_mitigations = Confirm::with_theme(&theme)
@@ -252,7 +253,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("no_mitigations=");
-            config_write(&no_mitigations.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&no_mitigations.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Printer and Scanner support" => {
             let printers_and_scanners = Confirm::with_theme(&theme)
@@ -261,7 +262,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("printers_and_scanners=");
-            config_write(&printers_and_scanners.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&printers_and_scanners.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Wi-Fi and Bluetooth support" => {
             let wifi_and_bluetooth = Confirm::with_theme(&theme)
@@ -270,7 +271,7 @@ hardware_wifi_and_bluetooth=true\n";
                 .unwrap();
 
             let line = format!("hardware_wifi_and_bluetooth=");
-            config_write(&wifi_and_bluetooth.to_string(), &line, "/root/user_selections.cfg")?;
+            config_write(&wifi_and_bluetooth.to_string(), &line, "/root/arch-flux/user_selections.cfg")?;
         }
         "Continue / Exit" => {
             return Ok(());
@@ -345,15 +346,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write("/mnt/etc/fstab", fstab_content)?;
     run_shell_command("genfstab -U /mnt >>/mnt/etc/fstab")?;
 
-    fs_extra::dir::remove("/mnt/root")?;
-    fs::create_dir("/mnt/root")?;
+    let _ = fs::remove_dir_all("/mnt/root/arch-flux");
+    fs::create_dir("/mnt/root/arch-flux")?;
 
     if cfg!(debug_assertions) {
-        fs_extra::dir::copy("/root", "/mnt", &fs_extra::dir::CopyOptions::new())?;
-        fs_extra::dir::copy("/media/sf_arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;
+        fs_extra::dir::copy("/root/arch-flux", "/mnt/root", &fs_extra::dir::CopyOptions::new())?;        
+        match copy_recursively(Path::new("/media/sf_arch-flux"), Path::new("/mnt/root/arch-flux")) {
+            Ok(_) => println!("Copied sf_arch-flux's files to /mnt/root/arch-flux successfully"),
+            Err(e) => eprintln!("Failed to copy sf_arch-flux's files: {}", e),
+        }
     } else {
-        fs_extra::dir::copy("/root", "/mnt", &fs_extra::dir::CopyOptions::new())?;
-    }
+        match copy_recursively(Path::new("/root/arch-flux"), Path::new("/mnt/root/arch-flux")) {
+            Ok(_) => println!("Copied Arch Flux's files to /mnt/root/arch-flux successfully"),
+            Err(e) => eprintln!("Failed to copy Arch Flux's files: {}", e),
+        }    }
 
     Ok(())
 }

@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 use nix::libc;
 use regex::Regex;
+use walkdir::WalkDir;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
 pub fn prompt(description: &str) -> String {
@@ -121,14 +123,14 @@ pub fn archiso_check() -> io::Result<()> {
 }
 
 pub fn fetch_disk() -> io::Result<String> {
-    let file = File::open("/root/selected_disk.cfg")?;
+    let file = File::open("/root/arch-flux/selected_disk.cfg")?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
 
     reader.read_to_string(&mut contents)?;
 
     if contents.is_empty() {
-        eprintln!("Disk not found in /root/selected_disk.cfg, did you run the disk format utility, or forgot to input the disk manually?");
+        eprintln!("Disk not found in /root/arch-flux/selected_disk.cfg, did you run the disk format utility, or forgot to input the disk manually?");
         std::process::exit(1);
     } else {
         let input = contents.replace("\n", ""); // Incase someone uses Vim to manually input the disk.
@@ -193,7 +195,7 @@ pub fn touch_file(path: &str) -> io::Result<()> {
 }
 
 pub fn find_option(option: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let file_path = "/root/user_selections.cfg";
+    let file_path = "/root/arch-flux/user_selections.cfg";
     let file_contents = std::fs::read_to_string(file_path)?;
     let re = regex::Regex::new(&format!(r"{}=(\w+)", option))?;
     let layout = re
@@ -232,4 +234,23 @@ pub fn get_march() -> Result<String, String> {
     } else {
         Err("Failed to match regex".to_string())
     }
+}
+
+// Copy files and directories recursively from src to dest.
+pub fn copy_recursively(src: &Path, dest: &Path) -> anyhow::Result<()> {
+    for entry in WalkDir::new(src).into_iter().filter_map(|e| e.ok()) {
+        let src_path = entry.path();
+        let relative_path = src_path.strip_prefix(src)?;
+        let dest_path = dest.join(relative_path);
+
+        if src_path.is_dir() {
+            fs::create_dir_all(&dest_path)?;
+        } else {
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src_path, &dest_path)?;
+        }
+    }
+    Ok(())
 }

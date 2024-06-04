@@ -5,7 +5,7 @@ use libcryptsetup_rs::{
 };
 use nix::libc::{self};
 use regex::Regex;
-use std::fs::{remove_file, File};
+use std::fs::{self, remove_file, File};
 use std::io::{self, Write};
 use std::path::Path;
 // Do not use other Result functions!
@@ -24,6 +24,7 @@ static SAID_NO: Mutex<bool> = Mutex::new(false);
 static WRONG_PASSWORD: Mutex<bool> = Mutex::new(false);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = fs::create_dir("/root/arch-flux");
     let mut selected_disk = "/dev/null".to_string();
 
     loop {
@@ -36,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     disk_editing(&mut selected_disk)?;
 
-    let file_path = "/root/selected_disk.cfg";
+    let file_path = "/root/arch-flux/selected_disk.cfg";
     remove_file(file_path).ok();
     
     let mut config = File::create(file_path)?;
