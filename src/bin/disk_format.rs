@@ -136,14 +136,10 @@ fn wipe_disk(device_path: &str) -> io::Result<()> {
     let _ = run_command("cryptsetup", &["luksClose", "cleanit"]);
     let _ = run_command("cryptsetup", &["luksClose", "arch"]);
 
-    let mut swap = String::new();
-    if *IS_SSD.lock().unwrap() {
-        swap = format!("{}2", device_path);
-    } else if *IS_NVME.lock().unwrap() {
-        swap = format!("{}p2", device_path);
-    }
+    let swap = format!("swapoff {}*", device_path);
+
     // Ensure swap isn't used, otherwise it cannot be deleted
-    let _ = run_command("swapoff", &[&swap]);
+    let _ = run_shell_command(&swap);
     // Remove disk's partition-table signatures
     let whole_disk: String = format!("wipefs -af {}*", device_path);
     run_shell_command(&whole_disk)?;

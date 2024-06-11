@@ -5,8 +5,7 @@ This project is entirely work in progress at the moment.
 * Arch Linux (also supports WSL2):
 . `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 . `source ~/.bashrc`
-. `sudo pacman -Syu`
-. `sudo pacman -S base-devel gdb clang ninja mold`
+. `sudo pacman -Syu base-devel clang mold`
 
 == Usage
 
